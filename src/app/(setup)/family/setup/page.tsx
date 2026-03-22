@@ -1,6 +1,5 @@
 'use client'
 
-import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AVATAR_EMOJIS } from '@/lib/utils'
@@ -61,49 +60,17 @@ export default function FamilySetupPage() {
     setError(null)
 
     try {
-      const supabase = createClient()
+      // Use the server-side API route which has service role access to bypass RLS
+      const res = await fetch('/api/setup-family', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ familyName, children }),
+      })
 
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      const data = await res.json()
 
-      // Create family
-      const { data: family, error: familyError } = await supabase
-        .from('families')
-        .insert([{ name: familyName, family_xp: 0, family_level: 1 }])
-        .select()
-        .single()
-
-      if (familyError) throw familyError
-
-      // Create parent profile
-      const { error: parentError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            family_id: family.id,
-            auth_user_id: user.id,
-            name: 'Parent',
-            role: 'parent',
-            avatar_emoji: '👨‍👩‍👧‍👦',
-          },
-        ])
-
-      if (parentError) throw parentError
-
-      // Create child profiles
-      for (const child of children) {
-        const { error: childError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              family_id: family.id,
-              name: child.name,
-              role: 'child',
-              avatar_emoji: child.avatar,
-            },
-          ])
-
-        if (childError) throw childError
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create family')
       }
 
       router.push('/dashboard')
