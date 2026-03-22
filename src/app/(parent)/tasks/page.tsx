@@ -98,6 +98,12 @@ export default function TasksPage() {
 
       const tasksToCreate = taskInputs.filter((t) => t.name.trim())
 
+      // Validate at least one child is assigned to each task
+      const unassigned = tasksToCreate.filter((t) => t.assignedTo.length === 0)
+      if (unassigned.length > 0) {
+        throw new Error(`Please assign each task to at least one child: ${unassigned.map((t) => t.name).join(', ')}`)
+      }
+
       for (const task of tasksToCreate) {
         const { data: template } = await supabase
           .from('task_templates')
@@ -149,6 +155,7 @@ export default function TasksPage() {
 
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!window.confirm('Delete this task? This cannot be undone.')) return
       await supabase.from('task_templates').delete().eq('id', id)
     },
     onSuccess: () => {
@@ -364,6 +371,11 @@ export default function TasksPage() {
             )}
           </div>
 
+          {createTasksMutation.isError && (
+            <p className="text-red-400 text-sm mt-2">
+              {(createTasksMutation.error as Error)?.message || 'Failed to save tasks'}
+            </p>
+          )}
           <Button
             onClick={() => createTasksMutation.mutate()}
             disabled={createTasksMutation.isPending}

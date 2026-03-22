@@ -176,6 +176,14 @@ export default function HomePage() {
       queryClient.invalidateQueries({ queryKey: ['todayTasks'] })
       setSubmitTaskId(null)
       setPhotoChallenge(null)
+      setSubmittingPhoto(false)
+    },
+    onError: (error) => {
+      console.error('Photo upload failed:', error)
+      alert('Photo upload failed. Please try again.')
+      setSubmitTaskId(null)
+      setPhotoChallenge(null)
+      setSubmittingPhoto(false)
     },
   })
 
@@ -205,22 +213,18 @@ export default function HomePage() {
     }
   }
 
-  const handleFileSelect = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file || !submitTaskId || !photoChallenge) return
 
     setSubmittingPhoto(true)
-    try {
-      uploadPhotoMutation.mutate({
-        taskId: submitTaskId,
-        file,
-        prompt: photoChallenge,
-      })
-    } finally {
-      setSubmittingPhoto(false)
-    }
+    uploadPhotoMutation.mutate({
+      taskId: submitTaskId,
+      file,
+      prompt: photoChallenge,
+    })
+    // Reset the file input so the same file can be re-selected if needed
+    event.target.value = ''
   }
 
   return (

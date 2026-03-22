@@ -116,7 +116,13 @@ export default function QuestsPage() {
                           : 'pending'
                       }
                     >
-                      {task.status}
+                      {task.status === 'submitted'
+                        ? 'Pending Review'
+                        : task.status === 'approved'
+                        ? 'Approved ✓'
+                        : task.status === 'rejected'
+                        ? 'Rejected'
+                        : 'Pending'}
                     </Badge>
                   </div>
                 </div>

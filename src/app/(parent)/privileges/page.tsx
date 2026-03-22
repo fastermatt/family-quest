@@ -124,6 +124,7 @@ export default function PrivilegesPage() {
 
   const deletePrivilegeMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!window.confirm('Delete this privilege? This cannot be undone.')) return
       await supabase.from('privileges').delete().eq('id', id)
     },
     onSuccess: () => {

@@ -116,6 +116,7 @@ export default function BonusPage() {
 
   const deleteBonusMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!window.confirm('Delete this bonus task? This cannot be undone.')) return
       await supabase.from('bonus_tasks').delete().eq('id', id)
     },
     onSuccess: () => {

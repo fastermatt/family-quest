@@ -12,6 +12,8 @@ export default function ReviewPage() {
   const supabase = createClient()
   const queryClient = useQueryClient()
   const [rejectionNotes, setRejectionNotes] = useState<Record<string, string>>({})
+  const [conditionalNotes, setConditionalNotes] = useState<Record<string, string>>({})
+  const [conditionalMinutes, setConditionalMinutes] = useState<Record<string, number>>({})
 
   const { data: profile } = useQuery({
     queryKey: ['profile'],
@@ -75,6 +77,7 @@ export default function ReviewPage() {
       const task = pendingTasks?.find((t) => t.id === taskId)
       if (!task) return
 
+      // 1. Mark task as approved
       await supabase
         .from('task_instances')
         .update({
@@ -84,18 +87,62 @@ export default function ReviewPage() {
         })
         .eq('id', taskId)
 
+      const xpGained = task.task_template?.xp_value || 100
       const child = children?.find((c) => c.id === task.assigned_to)
+
+      // 2. Update child XP
       if (child) {
-        const newXP = child.xp_total + (task.task_template?.xp_value || 100)
+        const newXP = (child.xp_total || 0) + xpGained
         await supabase
           .from('profiles')
           .update({ xp_total: newXP })
           .eq('id', child.id)
+
+        // 3. Check streak — if this was the last task to complete today, increment streak
+        const today = new Date().toISOString().split('T')[0]
+        const { data: allTodayTasks } = await supabase
+          .from('task_instances')
+          .select('id, status')
+          .eq('assigned_to', task.assigned_to)
+          .eq('due_date', today)
+
+        // Other tasks that are still not approved
+        const otherNonApproved = allTodayTasks?.filter(
+          (t) => t.id !== taskId && t.status !== 'approved'
+        ) || []
+
+        if (otherNonApproved.length === 0 && (allTodayTasks?.length || 0) > 0) {
+          // All tasks are now done — increment streak
+          const newStreak = (child.current_streak || 0) + 1
+          await supabase
+            .from('profiles')
+            .update({ current_streak: newStreak })
+            .eq('id', child.id)
+        }
+      }
+
+      // 4. Update family XP
+      if (profile?.family_id) {
+        const { data: family } = await supabase
+          .from('families')
+          .select('family_xp, family_level')
+          .eq('id', profile.family_id)
+          .single()
+
+        if (family) {
+          const newFamilyXP = (family.family_xp || 0) + xpGained
+          const newFamilyLevel = Math.floor(newFamilyXP / 5000) + 1
+          await supabase
+            .from('families')
+            .update({ family_xp: newFamilyXP, family_level: newFamilyLevel })
+            .eq('id', profile.family_id)
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingTasks'] })
       queryClient.invalidateQueries({ queryKey: ['children'] })
+      queryClient.invalidateQueries({ queryKey: ['family'] })
     },
   })
 
@@ -266,7 +313,7 @@ export default function ReviewPage() {
                         className="w-full"
                         variant="primary"
                       >
-                        ✓ Approve
+                        ✓ Approve (+{task.task_template?.xp_value || 100} XP)
                       </Button>
 
                       <div className="space-y-2">
@@ -314,6 +361,7 @@ export default function ReviewPage() {
               const requester = children?.find(
                 (c) => c.id === request.requested_by
               )
+              const timeLimit = conditionalMinutes[request.id] ?? 120
 
               return (
                 <GlassCard key={request.id} className="p-6">
@@ -360,20 +408,54 @@ export default function ReviewPage() {
                       >
                         ✗ Deny
                       </Button>
-                      <Button
-                        onClick={() =>
-                          conditionalRequestMutation.mutate({
-                            requestId: request.id,
-                            note: 'For this session only',
-                            timeLimit: 120,
-                          })
-                        }
-                        disabled={conditionalRequestMutation.isPending}
-                        className="w-full"
-                        variant="secondary"
-                      >
-                        ⏱️ Conditional (2h)
-                      </Button>
+
+                      {/* Conditional approval with editable time limit */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="Note (optional)"
+                            value={conditionalNotes[request.id] || ''}
+                            onChange={(e) =>
+                              setConditionalNotes({
+                                ...conditionalNotes,
+                                [request.id]: e.target.value,
+                              })
+                            }
+                            className="flex-1 text-sm h-auto"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="5"
+                            max="480"
+                            value={timeLimit}
+                            onChange={(e) =>
+                              setConditionalMinutes({
+                                ...conditionalMinutes,
+                                [request.id]: parseInt(e.target.value) || 120,
+                              })
+                            }
+                            className="w-20 text-sm h-auto"
+                          />
+                          <span className="text-xs text-white/60">min</span>
+                          <Button
+                            onClick={() =>
+                              conditionalRequestMutation.mutate({
+                                requestId: request.id,
+                                note: conditionalNotes[request.id] || 'For this session only',
+                                timeLimit,
+                              })
+                            }
+                            disabled={conditionalRequestMutation.isPending}
+                            className="flex-1"
+                            variant="secondary"
+                          >
+                            ⏱️ Conditional
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </GlassCard>
