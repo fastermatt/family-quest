@@ -10,7 +10,6 @@ export async function GET(req: NextRequest) {
   const activeProfileId = cookieStore.get('active_profile_id')?.value
 
   if (activeProfileId) {
-    // Use service role to fetch the child profile directly
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -25,6 +24,26 @@ export async function GET(req: NextRequest) {
 
     if (childProfile) {
       return NextResponse.json(childProfile)
+    }
+  }
+
+  // Check for persistent profile_token cookie (link-based login)
+  const profileToken = cookieStore.get('profile_token')?.value
+
+  if (profileToken) {
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: tokenProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('access_token', profileToken)
+      .single()
+
+    if (tokenProfile) {
+      return NextResponse.json(tokenProfile)
     }
   }
 

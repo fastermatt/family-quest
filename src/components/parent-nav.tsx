@@ -18,6 +18,7 @@ export function ParentNav() {
     { href: '/privileges', label: 'Privileges' },
     { href: '/bonus', label: 'Bonus' },
     { href: '/review', label: 'Review' },
+    { href: '/links', label: '🔗 Links' },
   ]
 
   const handleSignOut = async () => {
@@ -25,6 +26,12 @@ export function ParentNav() {
     try {
       const supabase = createClient()
       await supabase.auth.signOut()
+      // Also clear the profile_token cookie for link-based logins
+      await fetch('/api/switch-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: null, clearAll: true }),
+      })
       router.push('/login')
     } finally {
       setSigningOut(false)

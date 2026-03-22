@@ -26,10 +26,20 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  const isPublic = pathname === '/login' || pathname.startsWith('/auth/') || pathname === '/family/setup'
+  const isPublic =
+    pathname === '/login' ||
+    pathname.startsWith('/auth/') ||
+    pathname === '/family/setup' ||
+    pathname.startsWith('/api/join/')
 
   if (!user && !isPublic) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    // Allow access if user has a persistent profile_token cookie
+    const profileToken = request.cookies.get('profile_token')?.value
+    if (!profileToken) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    // Has a token — let the layout validate it
+    return supabaseResponse
   }
 
   if (user && pathname === '/login') {
