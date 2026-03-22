@@ -1,8 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
 
 :root {
   --color-primary: #0f766e;
@@ -47,7 +46,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .text-glow {
-  @apply text-shadow-lg;
+  text-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
 }
 
 @keyframes shimmer {
