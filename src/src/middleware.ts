@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  const isPublic = pathname === '/login' || pathname.startsWith('/auth/') || pathname === '/family/setup'
+  const isPublic = pathname === '/login' || pathname.startsWith('/auth/')
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -39,12 +39,7 @@ export async function middleware(request: NextRequest) {
       .eq('auth_user_id', user.id)
       .single()
 
-    // New user with no profile yet — send to family setup
-    if (!profile) {
-      return NextResponse.redirect(new URL('/family/setup', request.url))
-    }
-
-    const dest = profile.role === 'child' ? '/home' : '/dashboard'
+    const dest = profile?.role === 'child' ? '/home' : '/dashboard'
     return NextResponse.redirect(new URL(dest, request.url))
   }
 

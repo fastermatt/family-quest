@@ -21,13 +21,7 @@ export default async function ParentLayout({
     .eq('auth_user_id', user.id)
     .single()
 
-  // No profile yet — new user, send to setup
-  if (!profile) {
-    redirect('/family/setup')
-  }
-
-  // Wrong role — send children to their view
-  if (profile.role !== 'parent') {
+  if (!profile || profile.role !== 'parent') {
     redirect('/home')
   }
 

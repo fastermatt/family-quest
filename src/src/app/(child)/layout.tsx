@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { ParentNav } from '@/components/parent-nav'
+import { BottomNav } from '@/components/bottom-nav'
 
-export default async function ParentLayout({
+export default async function ChildLayout({
   children,
 }: {
   children: React.ReactNode
@@ -21,26 +21,16 @@ export default async function ParentLayout({
     .eq('auth_user_id', user.id)
     .single()
 
-  // No profile yet — new user, send to setup
-  if (!profile) {
-    redirect('/family/setup')
-  }
-
-  // Wrong role — send children to their view
-  if (profile.role !== 'parent') {
-    redirect('/home')
-  }
-
-  if (!profile.family_id) {
-    redirect('/family/setup')
+  if (!profile || profile.role !== 'child') {
+    redirect('/dashboard')
   }
 
   return (
     <>
-      <ParentNav />
-      <div className="max-w-6xl mx-auto px-4 py-6 pb-8">
+      <div className="max-w-md mx-auto px-4 py-6 pb-24">
         {children}
       </div>
+      <BottomNav />
     </>
   )
 }
