@@ -31,7 +31,7 @@ export function BottomNav() {
               )}
             >
               <span className="text-lg">{tab.icon}</span>
-              <span className="hidden xs:inline text-xs">{tab.label}</span>
+              <span className="text-xs">{tab.label}</span>
             </Link>
           )
         })}

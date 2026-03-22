@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { GlassCard } from '@/components/ui/glass-card'
 import { Badge } from '@/components/ui/badge'
 import { ProgressBar } from '@/components/ui/progress-bar'
@@ -6,28 +7,55 @@ import Link from 'next/link'
 import { getLevelInfo } from '@/lib/utils'
 import { ViewAsChildButton } from '@/components/view-as-child-button'
 import { GenerateTasksButton } from '@/components/generate-tasks-button'
+import { cookies } from 'next/headers'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+  const cookieStore = await cookies()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('auth_user_id', user.id)
-    .single()
+  let profile = null
+
+  if (user) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('auth_user_id', user.id)
+      .single()
+    profile = data
+  } else {
+    // Token-based parent login
+    const profileToken = cookieStore.get('profile_token')?.value
+    if (profileToken) {
+      const adminClient = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+      const { data } = await adminClient
+        .from('profiles')
+        .select('*')
+        .eq('access_token', profileToken)
+        .single()
+      profile = data
+    }
+  }
 
   if (!profile) return null
 
-  const { data: family } = await supabase
+  // Use admin client for data queries to bypass RLS (works for both auth and token logins)
+  const adminClient = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data: family } = await adminClient
     .from('families')
     .select('*')
     .eq('id', profile.family_id)
     .single()
 
-  const { data: children } = await supabase
+  const { data: children } = await adminClient
     .from('profiles')
     .select('*')
     .eq('family_id', profile.family_id)
@@ -36,7 +64,7 @@ export default async function DashboardPage() {
   // Get today's date
   const today = new Date().toISOString().split('T')[0]
 
-  const { data: todayTasks } = await supabase
+  const { data: todayTasks } = await adminClient
     .from('task_instances')
     .select('*')
     .eq('due_date', today)
@@ -45,7 +73,7 @@ export default async function DashboardPage() {
       children?.map((c) => c.id) || []
     )
 
-  const { data: pendingReviews } = await supabase
+  const { data: pendingReviews } = await adminClient
     .from('task_instances')
     .select('*')
     .eq('status', 'submitted')
@@ -54,10 +82,11 @@ export default async function DashboardPage() {
       children?.map((c) => c.id) || []
     )
 
-  const { data: pendingRequests } = await supabase
+  const { data: pendingRequests } = await adminClient
     .from('privilege_requests')
-    .select('*')
+    .select('*, privilege:privileges!inner(family_id)')
     .eq('status', 'pending')
+    .eq('privilege.family_id', profile.family_id)
 
   const familyLevelInfo = getLevelInfo(family?.family_xp || 0)
 
