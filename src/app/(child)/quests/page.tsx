@@ -12,13 +12,9 @@ export default function QuestsPage() {
   const { data: profile } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => {
-      const { data } = await supabase.auth.getUser()
-      const { data: p } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('auth_user_id', data.user?.id)
-        .single()
-      return p
+      const res = await fetch('/api/active-profile')
+      if (!res.ok) return null
+      return res.json()
     },
   })
 

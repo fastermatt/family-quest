@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
 export async function POST(req: NextRequest) {
-  const { familyName, children } = await req.json()
+  const { familyName, parentName, children } = await req.json()
 
   // Verify the user is authenticated via their cookie session
   const cookieStore = await cookies()
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     .insert([{
       family_id: family.id,
       auth_user_id: user.id,
-      name: 'Parent',
+      name: parentName || 'Parent',
       role: 'parent',
       avatar_emoji: '👨‍👩‍👧‍👦',
     }])

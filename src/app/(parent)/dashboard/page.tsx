@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import Link from 'next/link'
 import { getLevelInfo } from '@/lib/utils'
+import { ViewAsChildButton } from '@/components/view-as-child-button'
+import { GenerateTasksButton } from '@/components/generate-tasks-button'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -94,6 +96,15 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* Generate Tasks */}
+      <div className="glass-card p-5 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold">Daily Tasks</h2>
+          <p className="text-sm text-white/60">Generate today&apos;s tasks for all children</p>
+        </div>
+        <GenerateTasksButton />
+      </div>
+
       {/* Children Overview */}
       <div>
         <h2 className="text-2xl font-bold mb-4">Family Members</h2>
@@ -107,8 +118,9 @@ export default async function DashboardPage() {
                     <div className="text-3xl mb-2">{child.avatar_emoji}</div>
                     <h3 className="text-lg font-bold">{child.name}</h3>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end gap-2">
                     <Badge variant="xp">{child.xp_total} XP</Badge>
+                    <ViewAsChildButton childId={child.id} />
                   </div>
                 </div>
 

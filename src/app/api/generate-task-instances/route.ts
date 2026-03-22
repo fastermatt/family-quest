@@ -71,7 +71,6 @@ export async function POST() {
           const { data: challenges } = await supabase
             .from('photo_challenges')
             .select('prompt_text, emoji')
-            .limit(1)
 
           if (challenges?.length) {
             const randomIndex = Math.floor(

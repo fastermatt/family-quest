@@ -17,6 +17,7 @@ export default function FamilySetupPage() {
     'family'
   )
   const [familyName, setFamilyName] = useState('')
+  const [parentName, setParentName] = useState('')
   const [children, setChildren] = useState<Child[]>([{ name: '', avatar: '🦁' }])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +65,7 @@ export default function FamilySetupPage() {
       const res = await fetch('/api/setup-family', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ familyName, children }),
+        body: JSON.stringify({ familyName, parentName, children }),
       })
 
       const data = await res.json()
@@ -103,6 +104,21 @@ export default function FamilySetupPage() {
                   value={familyName}
                   onChange={(e) => setFamilyName(e.target.value)}
                   placeholder="The Smiths"
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="parent-name" className="block text-sm font-medium mb-2">
+                  Your Name (Parent)
+                </label>
+                <input
+                  id="parent-name"
+                  type="text"
+                  required
+                  value={parentName}
+                  onChange={(e) => setParentName(e.target.value)}
+                  placeholder="Mom / Dad / Your name"
                   className="w-full"
                 />
               </div>
