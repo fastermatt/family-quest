@@ -18,7 +18,7 @@ export default function FamilySetupPage() {
   )
   const [familyName, setFamilyName] = useState('')
   const [parentName, setParentName] = useState('')
-  const [children, setChildren] = useState<Child[]>([{ name: '', avatar: '🦁' }])
+  const [children, setChildren] = useState<Child[]>([{ name: '', avatar: 'ð¦' }])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -87,9 +87,10 @@ export default function FamilySetupPage() {
       <div className="w-full max-w-md">
         {step === 'family' ? (
           <GlassCard className="p-8">
-            <h1 className="text-3xl font-bold mb-2">Welcome to FamilyQuest</h1>
+            <div className="flex justify-center mb-4"><img src="/logo.svg" alt="Home Base" className="w-32" /></div>
+            <h1 className="text-3xl font-bold mb-2">Welcome to Home Base</h1>
             <p className="text-white/60 mb-8">
-              Let&apos;s set up your family quest hub
+              Let&apos;s set up your family&apos;s command center
             </p>
 
             <form onSubmit={handleSetupFamily} className="space-y-6">
