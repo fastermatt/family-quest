@@ -151,6 +151,7 @@ export default function BonusPage() {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 placeholder="Clean the garage"
+                className="w-full"
               />
             </div>
 
@@ -163,6 +164,7 @@ export default function BonusPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, type: e.target.value })
                 }
+                className="w-full"
               >
                 {BONUS_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -183,6 +185,7 @@ export default function BonusPage() {
                     setFormData({ ...formData, assignedTo: e.target.value })
                   }
                   required
+                  className="w-full"
                 >
                   <option value="">Select a child</option>
                   {children?.map((child) => (
@@ -203,6 +206,7 @@ export default function BonusPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, rewardType: e.target.value })
                 }
+                className="w-full"
               >
                 {REWARD_TYPES.map((r) => (
                   <option key={r.value} value={r.value}>
@@ -226,6 +230,7 @@ export default function BonusPage() {
                     xpBonus: parseInt(e.target.value),
                   })
                 }
+                className="w-full"
               />
             </div>
 
@@ -240,6 +245,7 @@ export default function BonusPage() {
                   setFormData({ ...formData, rewardValue: e.target.value })
                 }
                 placeholder="e.g., $10, Movie ticket"
+                className="w-full"
               />
             </div>
           </div>
@@ -269,6 +275,7 @@ export default function BonusPage() {
                 setFormData({ ...formData, rewardDescription: e.target.value })
               }
               placeholder="What do they get?"
+              className="w-full"
             />
           </div>
 
@@ -283,6 +290,7 @@ export default function BonusPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, deadline: e.target.value })
                 }
+                className="w-full"
               />
             </div>
 
