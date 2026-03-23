@@ -45,11 +45,13 @@ export default function LoginPage() {
         {!submitted ? (
           <div className="glass-card p-8 md:p-12">
             <div className="text-center mb-8">
-              <h1 className="text-4xl md:text-5xl font-bold mb-2 gradient-text">
-                FamilyQuest
-              </h1>
+              <img
+                src="/logo.svg"
+                alt="Home Base"
+                className="w-48 md:w-56 mx-auto mb-2"
+              />
               <p className="text-white/60 text-lg font-manrope">
-                Your family&apos;s quest hub
+                Your family&apos;s command center
               </p>
             </div>
 
