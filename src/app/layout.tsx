@@ -15,13 +15,13 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'FamilyQuest',
-  description: 'Family chore & reward tracker',
+  title: 'Home Base',
+  description: "Your family's command center",
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'FamilyQuest',
+    title: 'Home Base',
   },
 }
 
