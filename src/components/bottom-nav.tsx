@@ -15,7 +15,7 @@ export function BottomNav() {
   ]
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-[#020617]/95 backdrop-blur-xl">
+    <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-[#020617]/95 backdrop-blur-xl" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <nav className="flex items-center justify-around max-w-md mx-auto h-20 px-4 sm:px-6">
         {tabs.map((tab) => {
           const isActive = pathname === tab.href
