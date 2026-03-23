@@ -1,7 +1,7 @@
 {
-  "name": "FamilyQuest",
-  "short_name": "FamilyQuest",
-  "description": "Family chore & reward tracker",
+  "name": "Home Base",
+  "short_name": "Home Base",
+  "description": "Your family's command center",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
