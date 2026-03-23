@@ -300,11 +300,11 @@ export default function TasksPage() {
                     <p className="font-bold text-lg">{template.name}</p>
                     <div className="flex flex-wrap gap-2 text-xs text-white/60 mt-1">
                       <span>{template.category}</span>
-                      <span>\u2022</span>
+                      <span>•</span>
                       <span>{template.xp_value} XP</span>
-                      <span>\u2022</span>
+                      <span>•</span>
                       <span>{'\u2B50'.repeat(template.difficulty_stars)}</span>
-                      {template.photo_required && <><span>\u2022</span><span>\u{1F4F8}</span></>}
+                      {template.photo_required && <><span>•</span><span>📸</span></>}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
@@ -334,7 +334,7 @@ export default function TasksPage() {
 
                   <button onClick={() => updateFieldMutation.mutate({ id: template.id, field: 'photo_required', value: !template.photo_required })}
                     className={`text-xs rounded-lg px-2.5 py-1.5 border transition-all cursor-pointer ${template.photo_required ? 'bg-teal-500/20 border-teal-400/50 text-teal-300' : 'bg-white/5 border-white/10 text-white/40'}`}>
-                    \u{1F4F8} Photo {template.photo_required ? 'On' : 'Off'}
+                    📸 Photo {template.photo_required ? 'On' : 'Off'}
                   </button>
                 </div>
 
