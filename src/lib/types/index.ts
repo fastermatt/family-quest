@@ -29,6 +29,8 @@ export interface Profile {
   created_at: string
 }
 
+export type TimeOfDay = 'anytime' | 'morning' | 'afternoon' | 'evening'
+
 export interface TaskTemplate {
   id: string
   family_id: string
@@ -40,6 +42,7 @@ export interface TaskTemplate {
   photo_required: boolean
   xp_value: number
   difficulty_stars: number
+  time_of_day: TimeOfDay
   active: boolean
   created_by: string
   created_at: string
