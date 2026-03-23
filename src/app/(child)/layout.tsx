@@ -34,7 +34,7 @@ export default async function ChildLayout({
       return (
         <>
           <ChildViewBanner childName={childProfile.name} childEmoji={childProfile.avatar_emoji} />
-          <div className="max-w-md mx-auto px-4 py-6 pb-24 pt-20">
+          <div className="max-w-md mx-auto px-4 py-6 pt-20" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
             {children}
           </div>
           <BottomNav />
@@ -55,7 +55,7 @@ export default async function ChildLayout({
     if (tokenProfile?.role === 'child') {
       return (
         <>
-          <div className="max-w-md mx-auto px-4 py-6 pb-24">
+          <div className="max-w-md mx-auto px-4 py-6" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
             {children}
           </div>
           <BottomNav />
@@ -88,7 +88,7 @@ export default async function ChildLayout({
 
   return (
     <>
-      <div className="max-w-md mx-auto px-4 py-6 pb-24">
+      <div className="max-w-md mx-auto px-4 py-6" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
         {children}
       </div>
       <BottomNav />
