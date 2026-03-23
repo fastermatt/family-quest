@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" width="400" height="420">
+  <defs>
+    <linearGradient id="circleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2dd4bf"/>
+      <stop offset="100%" style="stop-color:#a3e635"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2dd4bf"/>
+      <stop offset="100%" style="stop-color:#a3e635"/>
+    </linearGradient>
+  </defs>
+  <circle cx="200" cy="175" r="140" fill="url(#circleGrad)"/>
+  <polygon points="200,62 310,168 90,168" fill="#0d1a2e" stroke="#0d1a2e" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="112" y="162" width="176" height="118" fill="#0d1a2e" stroke="#0d1a2e" stroke-width="4" rx="4"/>
+  <rect x="163" y="210" width="74" height="70" fill="url(#circleGrad)" rx="4"/>
+  <text x="200" y="373" text-anchor="middle" font-family="'Manrope', 'Arial Rounded MT Bold', Arial, sans-serif" font-weight="800" font-size="56" fill="url(#textGrad)" letter-spacing="-1">Home Base</text>
+</svg>
