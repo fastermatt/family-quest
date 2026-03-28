@@ -37,6 +37,16 @@ export async function POST(request: NextRequest) {
 
       let created = 0
 
+      // Pre-fetch photo challenges once (instead of inside every loop iteration)
+      let cachedChallenges: { prompt_text: string; emoji: string }[] | null = null
+      const hasPhotoTemplates = templates.some((t: any) => t.photo_required)
+      if (hasPhotoTemplates) {
+        const { data: challenges } = await supabase
+          .from('photo_challenges')
+          .select('prompt_text, emoji')
+        cachedChallenges = challenges || []
+      }
+
       for (const template of templates) {
               let shouldCreate = false
 
@@ -83,18 +93,12 @@ export async function POST(request: NextRequest) {
                 // Pick a random photo challenge if photo required
                 let photoChallengePrompt = null
 
-                if (template.photo_required) {
-                            const { data: challenges } = await supabase
-                              .from('photo_challenges')
-                              .select('prompt_text, emoji')
-
-                        if (challenges?.length) {
-                                      const randomIndex = Math.floor(
-                                                      Math.random() * challenges.length
-                                                    )
-                                      const challenge = challenges[randomIndex]
-                                      photoChallengePrompt = `${challenge.emoji} ${challenge.prompt_text}`
-                        }
+                if (template.photo_required && cachedChallenges?.length) {
+                        const randomIndex = Math.floor(
+                          Math.random() * cachedChallenges.length
+                        )
+                        const challenge = cachedChallenges[randomIndex]
+                        photoChallengePrompt = `${challenge.emoji} ${challenge.prompt_text}`
                 }
 
                 // Create task instance

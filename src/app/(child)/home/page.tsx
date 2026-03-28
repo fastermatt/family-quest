@@ -134,39 +134,57 @@ export default function HomePage() {
     ['approved', 'submitted'].includes(t.status)
   ).length || 0
 
-  const uploadPhotoMutation = useMutation({
+  const MAX_PHOTO_SIZE = 5 * 1024 * 1024 // 5MB
+  const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+
+  const submitTaskMutation = useMutation({
     mutationFn: async ({
       taskId,
       file,
       prompt,
     }: {
       taskId: string
-      file: File
+      file: File | null
       prompt: string
     }) => {
       if (!profile?.id) throw new Error('No profile')
 
-      // Upload to Supabase storage
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${profile.id}-${taskId}-${Date.now()}.${fileExt}`
-      const filePath = `task-submissions/${profile.family_id}/${fileName}`
+      let photoUrl = null
 
-      const { error: uploadError } = await supabase.storage
-        .from('task-photos')
-        .upload(filePath, file, { upsert: false })
+      // Only upload if there's an actual photo file
+      if (file && file.size > 0) {
+        // Validate file size
+        if (file.size > MAX_PHOTO_SIZE) {
+          throw new Error('Photo must be under 5MB. Please try a smaller image.')
+        }
+        // Validate file type
+        if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+          throw new Error('Please upload a JPEG, PNG, or WebP image.')
+        }
 
-      if (uploadError) throw uploadError
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${profile.id}-${taskId}-${Date.now()}.${fileExt}`
+        const filePath = `task-submissions/${profile.family_id}/${fileName}`
 
-      const { data } = supabase.storage
-        .from('task-photos')
-        .getPublicUrl(filePath)
+        const { error: uploadError } = await supabase.storage
+          .from('task-photos')
+          .upload(filePath, file, { upsert: false })
+
+        if (uploadError) throw uploadError
+
+        const { data } = supabase.storage
+          .from('task-photos')
+          .getPublicUrl(filePath)
+
+        photoUrl = data.publicUrl
+      }
 
       // Update task instance
       await supabase
         .from('task_instances')
         .update({
-          photo_url: data.publicUrl,
-          photo_challenge_prompt: prompt,
+          ...(photoUrl ? { photo_url: photoUrl } : {}),
+          ...(prompt ? { photo_challenge_prompt: prompt } : {}),
           status: 'submitted',
           submitted_at: new Date().toISOString(),
         })
@@ -189,10 +207,10 @@ export default function HomePage() {
 
   const handleCompleteClick = async (task: TaskWithTemplate) => {
     if (!task.task_template?.photo_required) {
-      // No photo required, mark as submitted directly
-      uploadPhotoMutation.mutate({
+      // No photo required, mark as submitted directly (no file upload)
+      submitTaskMutation.mutate({
         taskId: task.id,
-        file: new File([], 'no-photo'),
+        file: null,
         prompt: '',
       })
     } else {
@@ -218,7 +236,7 @@ export default function HomePage() {
     if (!file || !submitTaskId || !photoChallenge) return
 
     setSubmittingPhoto(true)
-    uploadPhotoMutation.mutate({
+    submitTaskMutation.mutate({
       taskId: submitTaskId,
       file,
       prompt: photoChallenge,

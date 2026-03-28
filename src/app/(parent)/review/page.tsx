@@ -77,8 +77,11 @@ export default function ReviewPage() {
       const task = pendingTasks?.find((t) => t.id === taskId)
       if (!task) return
 
+      // Guard: prevent re-approval of already-approved tasks
+      if (task.status === 'approved') return
+
       // 1. Mark task as approved
-      await supabase
+      const { error: updateError } = await supabase
         .from('task_instances')
         .update({
           status: 'approved',
@@ -86,42 +89,65 @@ export default function ReviewPage() {
           xp_awarded: task.task_template?.xp_value || 100,
         })
         .eq('id', taskId)
+        .eq('status', 'submitted') // Only approve if still submitted (prevents race)
+
+      if (updateError) throw updateError
 
       const xpGained = task.task_template?.xp_value || 100
-      const child = children?.find((c) => c.id === task.assigned_to)
 
-      // 2. Update child XP
-      if (child) {
-        const newXP = (child.xp_total || 0) + xpGained
-        await supabase
+      // 2. Update child XP — fetch fresh from DB to avoid race conditions
+      if (task.assigned_to) {
+        const { data: freshChild } = await supabase
           .from('profiles')
-          .update({ xp_total: newXP })
-          .eq('id', child.id)
+          .select('id, xp_total, current_streak, longest_streak, streak_last_updated')
+          .eq('id', task.assigned_to)
+          .single()
 
-        // 3. Check streak — if this was the last task to complete today, increment streak
-        const today = new Date().toISOString().split('T')[0]
-        const { data: allTodayTasks } = await supabase
-          .from('task_instances')
-          .select('id, status')
-          .eq('assigned_to', task.assigned_to)
-          .eq('due_date', today)
-
-        // Other tasks that are still not approved
-        const otherNonApproved = allTodayTasks?.filter(
-          (t) => t.id !== taskId && t.status !== 'approved'
-        ) || []
-
-        if (otherNonApproved.length === 0 && (allTodayTasks?.length || 0) > 0) {
-          // All tasks are now done — increment streak
-          const newStreak = (child.current_streak || 0) + 1
+        if (freshChild) {
+          const newXP = (freshChild.xp_total || 0) + xpGained
           await supabase
             .from('profiles')
-            .update({ current_streak: newStreak })
-            .eq('id', child.id)
+            .update({ xp_total: newXP })
+            .eq('id', freshChild.id)
+
+          // 3. Check streak — if this was the last task to complete today, increment streak
+          const today = new Date().toISOString().split('T')[0]
+
+          // Skip streak if already updated today
+          const lastStreakDate = freshChild.streak_last_updated
+            ? new Date(freshChild.streak_last_updated).toISOString().split('T')[0]
+            : null
+
+          if (lastStreakDate !== today) {
+            const { data: allTodayTasks } = await supabase
+              .from('task_instances')
+              .select('id, status')
+              .eq('assigned_to', task.assigned_to)
+              .eq('due_date', today)
+
+            // Other tasks that are still not approved
+            const otherNonApproved = allTodayTasks?.filter(
+              (t) => t.id !== taskId && t.status !== 'approved'
+            ) || []
+
+            if (otherNonApproved.length === 0 && (allTodayTasks?.length || 0) > 0) {
+              // All tasks are now done — increment streak
+              const newStreak = (freshChild.current_streak || 0) + 1
+              const newLongest = Math.max(newStreak, freshChild.longest_streak || 0)
+              await supabase
+                .from('profiles')
+                .update({
+                  current_streak: newStreak,
+                  longest_streak: newLongest,
+                  streak_last_updated: today,
+                })
+                .eq('id', freshChild.id)
+            }
+          }
         }
       }
 
-      // 4. Update family XP
+      // 4. Update family XP — already reads fresh from DB
       if (profile?.family_id) {
         const { data: family } = await supabase
           .from('families')

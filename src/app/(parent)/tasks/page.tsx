@@ -134,18 +134,21 @@ export default function TasksPage() {
       if (!profile?.family_id) throw new Error('No family')
       const tasksToCreate = taskInputs.filter((t) => t.name.trim())
       for (const task of tasksToCreate) {
+        // Validate XP bounds
+        const xp = Math.max(0, Math.min(task.xpValue || 100, 10000))
+        const difficulty = Math.max(1, Math.min(task.difficultyStars || 1, 5))
         const { data: template } = await supabase
           .from('task_templates')
           .insert([{
             family_id: profile.family_id,
-            name: task.name,
+            name: task.name.trim().slice(0, 200),
             category: task.category,
             recurrence_type: task.recurrence,
             recurrence_days: [],
             reset_hour: 0,
             photo_required: task.photoRequired,
-            xp_value: task.xpValue,
-            difficulty_stars: task.difficultyStars,
+            xp_value: xp,
+            difficulty_stars: difficulty,
             time_of_day: task.timeOfDay,
             active: true,
             created_by: profile.id,
@@ -167,6 +170,7 @@ export default function TasksPage() {
 
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!window.confirm('Delete this task? This cannot be undone.')) return
       await supabase.from('task_assignments').delete().eq('template_id', id)
       await supabase.from('task_templates').delete().eq('id', id)
     },
@@ -185,7 +189,11 @@ export default function TasksPage() {
 
   const updateFieldMutation = useMutation({
     mutationFn: async ({ id, field, value }: { id: string; field: string; value: unknown }) => {
-      await supabase.from('task_templates').update({ [field]: value }).eq('id', id)
+      // Validate bounds for numeric fields
+      let safeValue = value
+      if (field === 'xp_value') safeValue = Math.max(0, Math.min(Number(value) || 100, 10000))
+      if (field === 'difficulty_stars') safeValue = Math.max(1, Math.min(Number(value) || 1, 5))
+      await supabase.from('task_templates').update({ [field]: safeValue }).eq('id', id)
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['templates'] }) },
   })
