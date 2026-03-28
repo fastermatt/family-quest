@@ -188,6 +188,7 @@ export default function ReviewPage() {
           review_note: note,
         })
         .eq('id', taskId)
+        .eq('status', 'submitted') // Only reject if still submitted
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingTasks'] })

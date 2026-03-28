@@ -78,18 +78,22 @@ export default function BonusPage() {
   const createBonusMutation = useMutation({
     mutationFn: async () => {
       if (!profile?.family_id) throw new Error('No family')
+      if (!formData.name.trim()) throw new Error('Name is required')
+
+      // Validate XP bounds
+      const xpBonus = Math.max(0, Math.min(formData.xpBonus || 500, 10000))
 
       await supabase.from('bonus_tasks').insert([
         {
           family_id: profile.family_id,
-          name: formData.name,
-          description: formData.description,
+          name: formData.name.trim().slice(0, 200),
+          description: formData.description.trim().slice(0, 1000),
           type: formData.type,
-          assigned_to: formData.type === 'assigned' ? formData.assignedTo : null,
+          assigned_to: formData.type === 'assigned' ? formData.assignedTo || null : null,
           reward_type: formData.rewardType,
           reward_value: formData.rewardValue,
           reward_description: formData.rewardDescription,
-          xp_bonus: formData.xpBonus,
+          xp_bonus: xpBonus,
           status: 'active',
           deadline: formData.deadline || null,
           photo_required: formData.photoRequired,

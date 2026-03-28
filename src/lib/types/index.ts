@@ -26,6 +26,10 @@ export interface Profile {
   current_level: number
   current_streak: number
   longest_streak: number
+  streak_last_updated: string | null
+  access_token: string | null
+  birthday: string | null
+  theme_preferences: Record<string, string> | null
   created_at: string
 }
 

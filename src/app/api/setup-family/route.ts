@@ -58,18 +58,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parentError.message }, { status: 500 })
   }
 
-  // Create child profiles
-  for (const child of children) {
+  // Create child profiles — batch insert for atomicity
+  if (children && children.length > 0) {
+    const childRows = children.map((child: { name: string; avatar: string }) => ({
+      family_id: family.id,
+      name: (child.name || 'Child').trim().slice(0, 100),
+      role: 'child',
+      avatar_emoji: child.avatar || '🦁',
+    }))
+
     const { error: childError } = await supabaseAdmin
       .from('profiles')
-      .insert([{
-        family_id: family.id,
-        name: child.name,
-        role: 'child',
-        avatar_emoji: child.avatar,
-      }])
+      .insert(childRows)
 
     if (childError) {
+      // Clean up: delete parent profile and family on child creation failure
+      await supabaseAdmin.from('profiles').delete().eq('family_id', family.id)
+      await supabaseAdmin.from('families').delete().eq('id', family.id)
       return NextResponse.json({ error: childError.message }, { status: 500 })
     }
   }
