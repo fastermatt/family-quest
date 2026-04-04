@@ -9,6 +9,22 @@ export async function POST(request: NextRequest) {
           const cronSecret = process.env.CRON_SECRET
           const isCronCall = cronSecret && authHeader === `Bearer ${cronSecret}`
 
+      // For non-cron calls, require a valid parent session
+      if (!isCronCall) {
+        const { cookies } = await import('next/headers')
+        const cookieStore = await cookies()
+        const profileToken = cookieStore.get('profile_token')?.value
+        if (!profileToken) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+        const { createClient: createAdmin } = await import('@supabase/supabase-js')
+        const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+        const { data: caller } = await admin.from('profiles').select('role').eq('access_token', profileToken).single()
+        if (!caller || caller.role !== 'parent') {
+          return NextResponse.json({ error: 'Only parents can generate tasks' }, { status: 403 })
+        }
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let supabase: any
           if (isCronCall) {

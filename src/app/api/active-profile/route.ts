@@ -5,76 +5,68 @@ import { cookies } from 'next/headers'
 
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies()
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 
-  // Check for active_profile_id cookie (parent viewing as child)
-  const activeProfileId = cookieStore.get('active_profile_id')?.value
+  // Resolve base session first (profile_token or Supabase auth)
+  let sessionProfile: { id: string; role: string; family_id: string } | null = null
+  const profileToken = cookieStore.get('profile_token')?.value
 
-  if (activeProfileId) {
-    const supabaseAdmin = createClient(
+  if (profileToken) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('id, role, family_id')
+      .eq('access_token', profileToken)
+      .single()
+    sessionProfile = data
+  }
+
+  if (!sessionProfile) {
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
     )
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabaseAdmin
+        .from('profiles')
+        .select('id, role, family_id')
+        .eq('auth_user_id', user.id)
+        .single()
+      sessionProfile = data
+    }
+  }
 
+  if (!sessionProfile) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // If a parent is viewing as a child, verify child is in the same family
+  const activeProfileId = cookieStore.get('active_profile_id')?.value
+  if (activeProfileId && sessionProfile.role === 'parent') {
     const { data: childProfile } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', activeProfileId)
+      .eq('family_id', sessionProfile.family_id) // same family check
       .eq('role', 'child')
       .single()
-
-    if (childProfile) {
-      return NextResponse.json(childProfile)
-    }
+    if (childProfile) return NextResponse.json(childProfile)
   }
 
-  // Check for persistent profile_token cookie (link-based login)
-  const profileToken = cookieStore.get('profile_token')?.value
-
-  if (profileToken) {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: tokenProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('access_token', profileToken)
-      .single()
-
-    if (tokenProfile) {
-      return NextResponse.json(tokenProfile)
-    }
-  }
-
-  // Default: return the authenticated user's profile
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {},
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
+  // Return the session profile's full data
+  const { data: fullProfile } = await supabaseAdmin
     .from('profiles')
     .select('*')
-    .eq('auth_user_id', user.id)
+    .eq('id', sessionProfile.id)
     .single()
 
-  if (!profile) {
-    return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
-  }
+  if (!fullProfile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
 
-  return NextResponse.json(profile)
+  // Strip pin_hash before returning
+  const { pin_hash, ...safe } = fullProfile
+  return NextResponse.json(safe)
 }

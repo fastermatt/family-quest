@@ -24,11 +24,17 @@ export default function FamilyLoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [shake, setShake] = useState(false)
+  const [needsFamilyCode, setNeedsFamilyCode] = useState(false)
+  const [familyCode, setFamilyCode] = useState('')
+  const [familyCodeError, setFamilyCodeError] = useState('')
 
   useEffect(() => {
     fetch('/api/family-members')
-      .then(r => r.json())
-      .then(data => { setMembers(data); setLoading(false) })
+      .then(r => {
+        if (r.status === 404) { setNeedsFamilyCode(true); setLoading(false); return null }
+        return r.json()
+      })
+      .then(data => { if (data) { setMembers(data); setLoading(false) } })
       .catch(() => setLoading(false))
   }, [])
 
@@ -87,8 +93,38 @@ export default function FamilyLoginPage() {
           <p className="text-white/50 text-sm">Who are you?</p>
         </div>
 
+        {/* Family code entry — shown when multiple families exist and no session */}
+        {needsFamilyCode && (
+          <div className="space-y-4">
+            <p className="text-white/60 text-sm text-center">Enter your family's invite code to get started</p>
+            <input
+              type="text"
+              value={familyCode}
+              onChange={e => { setFamilyCode(e.target.value); setFamilyCodeError('') }}
+              placeholder="Family ID or invite code"
+              className="w-full bg-white/5 border border-white/20 rounded-2xl px-4 py-3 text-white placeholder-white/30 text-center font-mono"
+            />
+            {familyCodeError && <p className="text-red-400 text-sm text-center">{familyCodeError}</p>}
+            <button
+              onClick={async () => {
+                const res = await fetch(`/api/family-members?family_id=${familyCode.trim()}`)
+                if (res.ok) {
+                  const data = await res.json()
+                  setMembers(data)
+                  setNeedsFamilyCode(false)
+                } else {
+                  setFamilyCodeError('Family not found. Check your invite link.')
+                }
+              }}
+              className="w-full py-3 rounded-2xl gradient-primary font-semibold"
+            >
+              Continue
+            </button>
+          </div>
+        )}
+
         {/* Pick member screen */}
-        {screen === 'pick' && (
+        {!needsFamilyCode && screen === 'pick' && (
           <div className="space-y-6">
             {loading ? (
               <div className="text-center text-white/40 py-12">Loading...</div>
@@ -140,7 +176,7 @@ export default function FamilyLoginPage() {
         )}
 
         {/* PIN entry screen */}
-        {screen === 'pin' && selected && (
+        {!needsFamilyCode && screen === 'pin' && selected && (
           <div className="space-y-6">
             {/* Back + who */}
             <div className="flex items-center gap-3 mb-2">
