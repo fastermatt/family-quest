@@ -62,19 +62,9 @@ export default function HomePage() {
     queryKey: ['todayTasks', profile?.id, today],
     queryFn: async () => {
       if (!profile?.id) return []
-      const { data: tasks } = await supabase
-        .from('task_instances')
-        .select('*')
-        .eq('assigned_to', profile.id)
-        .eq('due_date', today)
-      const { data: templates } = await supabase
-        .from('task_templates')
-        .select('*')
-
-      return (tasks || []).map((task) => ({
-        ...task,
-        task_template: templates?.find((t) => t.id === task.template_id),
-      }))
+      const res = await fetch(`/api/tasks?date=${today}`)
+      if (!res.ok) return []
+      return res.json()
     },
     enabled: !!profile?.id,
   })

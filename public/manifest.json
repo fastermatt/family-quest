@@ -2,7 +2,7 @@
   "name": "Home Base",
   "short_name": "Home Base",
   "description": "Your family's command center",
-  "start_url": "/",
+  "start_url": "/child-login",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",

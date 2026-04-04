@@ -4,6 +4,20 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { BottomNav } from '@/components/bottom-nav'
 import { ChildViewBanner } from '@/components/child-view-banner'
+import Image from 'next/image'
+
+function ChildHeader() {
+  return (
+    <header
+      className="fixed top-0 left-0 right-0 z-40 flex items-center justify-center px-4 bg-[#020617]/80 backdrop-blur-md border-b border-white/10"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(56px + env(safe-area-inset-top, 0px))' }}
+    >
+      <Image src="/logo.svg" alt="Home Base" width={120} height={32} priority />
+    </header>
+  )
+}
+
+const HEADER_OFFSET = 'calc(56px + env(safe-area-inset-top, 0px))'
 
 export default async function ChildLayout({
   children,
@@ -33,8 +47,12 @@ export default async function ChildLayout({
     if (childProfile) {
       return (
         <>
+          <ChildHeader />
           <ChildViewBanner childName={childProfile.name} childEmoji={childProfile.avatar_emoji} />
-          <div className="max-w-md mx-auto px-4 py-6 pt-20" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
+          <div
+            className="max-w-md mx-auto px-4 py-6"
+            style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}
+          >
             {children}
           </div>
           <BottomNav />
@@ -55,7 +73,11 @@ export default async function ChildLayout({
     if (tokenProfile?.role === 'child') {
       return (
         <>
-          <div className="max-w-md mx-auto px-4 py-6" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
+          <ChildHeader />
+          <div
+            className="max-w-md mx-auto px-4 py-6"
+            style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}
+          >
             {children}
           </div>
           <BottomNav />
@@ -64,7 +86,6 @@ export default async function ChildLayout({
     }
 
     if (tokenProfile?.role === 'parent') {
-      // profile_token belongs to a parent — send to parent view
       redirect('/dashboard')
     }
   }
@@ -88,7 +109,11 @@ export default async function ChildLayout({
 
   return (
     <>
-      <div className="max-w-md mx-auto px-4 py-6" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
+      <ChildHeader />
+      <div
+        className="max-w-md mx-auto px-4 py-6"
+        style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}
+      >
         {children}
       </div>
       <BottomNav />

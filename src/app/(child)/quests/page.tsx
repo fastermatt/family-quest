@@ -1,14 +1,11 @@
 'use client'
 
-import { createClient } from '@/lib/supabase/client'
 import { GlassCard } from '@/components/ui/glass-card'
 import { Badge } from '@/components/ui/badge'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 
 export default function QuestsPage() {
-  const supabase = createClient()
-
   const { data: profile } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => {
@@ -24,20 +21,9 @@ export default function QuestsPage() {
     queryKey: ['allTasks', profile?.id],
     queryFn: async () => {
       if (!profile?.id) return []
-      const { data: tasks } = await supabase
-        .from('task_instances')
-        .select('*')
-        .eq('assigned_to', profile.id)
-        .order('due_date', { ascending: false })
-
-      const { data: templates } = await supabase
-        .from('task_templates')
-        .select('*')
-
-      return (tasks || []).map((task) => ({
-        ...task,
-        task_template: templates?.find((t) => t.id === task.template_id),
-      }))
+      const res = await fetch('/api/tasks')
+      if (!res.ok) return []
+      return res.json()
     },
     enabled: !!profile?.id,
   })
