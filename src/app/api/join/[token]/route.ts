@@ -22,10 +22,15 @@ export async function GET(
     return NextResponse.redirect(new URL('/login?error=invalid-link', req.url))
   }
 
-  const dest = profile.role === 'child' ? '/home' : '/dashboard'
-  const response = NextResponse.redirect(new URL(dest, req.url))
+  if (profile.role === 'child') {
+    // For children, redirect to /child-login?token=XXX so the client-side page
+    // can save the token to localStorage — this ensures the PWA remembers them
+    // even after a cold launch when cookies are not shared across iOS contexts.
+    return NextResponse.redirect(new URL(`/child-login?token=${token}`, req.url))
+  }
 
-  // Set a persistent 30-day login cookie
+  // Parents: set cookie and go straight to dashboard
+  const response = NextResponse.redirect(new URL('/dashboard', req.url))
   response.cookies.set('profile_token', token, {
     path: '/',
     httpOnly: true,

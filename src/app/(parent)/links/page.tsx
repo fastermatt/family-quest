@@ -58,7 +58,7 @@ export default async function LinksPage() {
       <div>
         <h1 className="text-3xl font-bold mb-1">Family Login Links</h1>
         <p className="text-white/60">
-          Copy and send each person their personal link via text message. When they tap it, they&apos;re instantly logged in — no password needed. Links last 30 days; just send a new one if they ever get logged out.
+          Copy and send each person their personal link via text message. When they tap it, they&apos;re instantly logged in — no password needed. Kids tap their link once in Safari, then add the app to their Home Screen — they'll stay logged in automatically from then on.
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export default async function LinksPage() {
                 name={member.name}
                 emoji={member.avatar_emoji}
                 role={member.role}
-                link={`${baseUrl}/api/join/${member.access_token}`}
+                link={member.role === 'child' ? `${baseUrl}/child-login?token=${member.access_token}` : `${baseUrl}/api/join/${member.access_token}`}
               />
             ))}
           </div>
@@ -89,7 +89,7 @@ export default async function LinksPage() {
                 name={member.name}
                 emoji={member.avatar_emoji}
                 role={member.role}
-                link={`${baseUrl}/api/join/${member.access_token}`}
+                link={member.role === 'child' ? `${baseUrl}/child-login?token=${member.access_token}` : `${baseUrl}/api/join/${member.access_token}`}
               />
             ))}
           </div>
@@ -98,7 +98,7 @@ export default async function LinksPage() {
 
       <div className="glass-card p-5 border-yellow-400/20 bg-yellow-500/5">
         <p className="text-sm text-yellow-300/80">
-          💡 <strong>Tip:</strong> Save each person&apos;s link as a bookmark on their phone&apos;s home screen for one-tap access. In Safari: tap Share → &quot;Add to Home Screen&quot;.
+          💡 <strong>Kids setup:</strong> Send them their link. They tap it in Safari, then tap Share → &quot;Add to Home Screen&quot;. After that, the app icon will log them in automatically — no link needed again.
         </p>
       </div>
     </div>
