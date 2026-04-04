@@ -2,7 +2,7 @@
   "name": "Home Base",
   "short_name": "Home Base",
   "description": "Your family's command center",
-  "start_url": "/child-login",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",
@@ -20,5 +20,8 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["productivity", "lifestyle"]
+  "categories": [
+    "productivity",
+    "lifestyle"
+  ]
 }

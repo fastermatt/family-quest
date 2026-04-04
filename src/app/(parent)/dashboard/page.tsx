@@ -8,6 +8,7 @@ import { getLevelInfo } from '@/lib/utils'
 import { ViewAsChildButton } from '@/components/view-as-child-button'
 import { GenerateTasksButton } from '@/components/generate-tasks-button'
 import { cookies } from 'next/headers'
+import { PinManager } from '@/components/pin-manager'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -234,6 +235,24 @@ export default async function DashboardPage() {
           </Link>
         </div>
       )}
+
+      {/* PIN Management */}
+      <div className="glass-card p-6">
+        <h2 className="text-2xl font-bold mb-1">Family PINs</h2>
+        <p className="text-white/50 text-sm mb-4">
+          Set a 4-digit PIN for each family member. Kids enter their PIN at{' '}
+          <span className="text-teal-400 font-mono">the login screen</span> to access their profile — no links or passwords needed.
+        </p>
+        <PinManager
+          members={(children || []).concat(profile ? [{ ...profile, has_pin: !!profile.pin_hash }] : []).map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            avatar_emoji: m.avatar_emoji,
+            role: m.role,
+            has_pin: !!m.pin_hash,
+          }))}
+        />
+      </div>
     </div>
   )
 }
