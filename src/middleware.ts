@@ -28,9 +28,15 @@ export async function middleware(request: NextRequest) {
 
   const isPublic =
     pathname === '/login' ||
+    pathname === '/family-login' ||
+    pathname === '/child-login' ||
     pathname.startsWith('/auth/') ||
     pathname === '/family/setup' ||
-    pathname.startsWith('/api/join/')
+    pathname.startsWith('/api/join/') ||
+    pathname === '/api/pin-login' ||
+    pathname === '/api/family-members' ||
+    pathname === '/api/set-child-token' ||
+    pathname === '/api/test-suite'
 
   if (!user && !isPublic) {
     // Allow access if user has a persistent profile_token cookie
