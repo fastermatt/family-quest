@@ -15,6 +15,7 @@ interface TaskWithTemplate {
   id: string
   status: string
   xp_awarded: number
+  template_id?: string
   task_template?: {
     name: string
     category: string
@@ -56,9 +57,11 @@ export default function HomePage() {
     enabled: !!profile?.family_id,
   })
 
-  const today = new Date().toISOString().split('T')[0]
+  // Use local date (not UTC) to avoid timezone mismatch
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-  const { data: todayTasks } = useQuery({
+  const { data: todayTasks } = useQuery<TaskWithTemplate[]>({
     queryKey: ['todayTasks', profile?.id, today],
     queryFn: async () => {
       if (!profile?.id) return []
@@ -124,9 +127,6 @@ export default function HomePage() {
     ['approved', 'submitted'].includes(t.status)
   ).length || 0
 
-  const MAX_PHOTO_SIZE = 5 * 1024 * 1024 // 5MB
-  const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
-
   const submitTaskMutation = useMutation({
     mutationFn: async ({
       taskId,
@@ -139,46 +139,22 @@ export default function HomePage() {
     }) => {
       if (!profile?.id) throw new Error('No profile')
 
-      let photoUrl = null
+      const formData = new FormData()
+      formData.append('taskId', taskId)
+      if (prompt) formData.append('photoChallengePrompt', prompt)
+      if (file && file.size > 0) formData.append('photo', file)
 
-      // Only upload if there's an actual photo file
-      if (file && file.size > 0) {
-        // Validate file size
-        if (file.size > MAX_PHOTO_SIZE) {
-          throw new Error('Photo must be under 5MB. Please try a smaller image.')
-        }
-        // Validate file type
-        if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
-          throw new Error('Please upload a JPEG, PNG, or WebP image.')
-        }
+      const res = await fetch('/api/submit-task', {
+        method: 'POST',
+        body: formData,
+      })
 
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${profile.id}-${taskId}-${Date.now()}.${fileExt}`
-        const filePath = `task-submissions/${profile.family_id}/${fileName}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('task-photos')
-          .upload(filePath, file, { upsert: false })
-
-        if (uploadError) throw uploadError
-
-        const { data } = supabase.storage
-          .from('task-photos')
-          .getPublicUrl(filePath)
-
-        photoUrl = data.publicUrl
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Submission failed' }))
+        throw new Error(err.error || 'Submission failed')
       }
 
-      // Update task instance
-      await supabase
-        .from('task_instances')
-        .update({
-          ...(photoUrl ? { photo_url: photoUrl } : {}),
-          ...(prompt ? { photo_challenge_prompt: prompt } : {}),
-          status: 'submitted',
-          submitted_at: new Date().toISOString(),
-        })
-        .eq('id', taskId)
+      return res.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todayTasks'] })
@@ -187,10 +163,8 @@ export default function HomePage() {
       setSubmittingPhoto(false)
     },
     onError: (error) => {
-      console.error('Photo upload failed:', error)
-      alert('Photo upload failed. Please try again.')
-      setSubmitTaskId(null)
-      setPhotoChallenge(null)
+      console.error('Task submission failed:', error)
+      alert(error instanceof Error ? error.message : 'Submission failed. Please try again.')
       setSubmittingPhoto(false)
     },
   })
@@ -207,16 +181,23 @@ export default function HomePage() {
       // Show photo challenge
       setSubmitTaskId(task.id)
 
-      const { data: challenges } = await supabase
-        .from('photo_challenges')
-        .select('*')
+      try {
+        const res = await fetch('/api/photo-challenges')
+        const challenges = res.ok ? await res.json() : []
 
-      if (challenges?.length) {
-        const randomChallenge =
-          challenges[Math.floor(Math.random() * challenges.length)]
-        setPhotoChallenge(
-          `${randomChallenge.emoji} ${randomChallenge.prompt_text}`
-        )
+        if (challenges?.length) {
+          const randomChallenge =
+            challenges[Math.floor(Math.random() * challenges.length)]
+          setPhotoChallenge(
+            `${randomChallenge.emoji} ${randomChallenge.prompt_text}`
+          )
+        } else {
+          // No challenges configured — use a default prompt
+          setPhotoChallenge('\uD83D\uDCF8 Show your completed task!')
+        }
+      } catch {
+        // Fallback prompt if API fails
+        setPhotoChallenge('\uD83D\uDCF8 Show your completed task!')
       }
     }
   }
@@ -351,35 +332,44 @@ export default function HomePage() {
       {submitTaskId && photoChallenge && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <GlassCard className="w-full max-w-sm p-8 text-center space-y-6">
-            <h2 className="text-2xl font-bold">Photo Challenge</h2>
+            {submittingPhoto ? (
+              <>
+                <div className="text-6xl animate-spin">{'\u26A1'}</div>
+                <h2 className="text-2xl font-bold">Submitting...</h2>
+                <p className="text-white/60">Uploading your photo</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold">Photo Challenge</h2>
 
-            <div className="text-6xl animate-bounce">
-              {photoChallenge.split(' ')[0]}
-            </div>
+                <div className="text-6xl animate-bounce">
+                  {photoChallenge.split(' ')[0]}
+                </div>
 
-            <p className="text-lg text-white/80">
-              {photoChallenge.split(' ').slice(1).join(' ')}
-            </p>
+                <p className="text-lg text-white/80">
+                  {photoChallenge.split(' ').slice(1).join(' ')}
+                </p>
 
-            <div className="space-y-3">
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={submittingPhoto}
-                className="w-full"
-              >
-                📷 Take Photo
-              </Button>
-              <Button
-                onClick={() => {
-                  setSubmitTaskId(null)
-                  setPhotoChallenge(null)
-                }}
-                variant="ghost"
-                className="w-full"
-              >
-                Cancel
-              </Button>
-            </div>
+                <div className="space-y-3">
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full"
+                  >
+                    {'\uD83D\uDCF7'} Take Photo
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSubmitTaskId(null)
+                      setPhotoChallenge(null)
+                    }}
+                    variant="ghost"
+                    className="w-full"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
 
             <input
               ref={fileInputRef}

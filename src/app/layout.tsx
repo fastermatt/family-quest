@@ -15,13 +15,13 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Home Base',
-  description: "Your family's command center",
+  title: 'ChoreZap',
+  description: 'Zap chores. Earn sparks. Level up.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Home Base',
+    title: 'ChoreZap',
   },
 }
 

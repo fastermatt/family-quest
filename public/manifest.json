@@ -1,8 +1,9 @@
 {
-  "name": "Home Base",
-  "short_name": "Home Base",
-  "description": "Your family's command center",
-  "start_url": "/",
+  "name": "ChoreZap",
+  "short_name": "ChoreZap",
+  "description": "Zap chores. Earn sparks. Level up.",
+  "start_url": "/child-login",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",
