@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 
 interface FamilyMember {
   id: string
@@ -104,7 +103,8 @@ export default function FamilyLoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Image src="/logo.svg" alt="Home Base" width={160} height={42} className="mx-auto mb-3" priority />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="ChoreZap" height={72} width={69} className="mx-auto mb-3" style={{ height: 72, width: 'auto' }} />
           <p className="text-white/50 text-sm">Who are you?</p>
         </div>
 

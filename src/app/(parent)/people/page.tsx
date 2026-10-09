@@ -26,13 +26,13 @@ async function post(url: string, body: unknown) {
   return json
 }
 
-function PinForm({ member, onDone }: { member: Member; onDone: () => void }) {
+function PinForm({ member, onDone }: { member: Member; onDone: (didSave?: boolean) => void }) {
   const [pin, setPin] = useState('')
   const [again, setAgain] = useState('')
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: () => post('/api/set-pin', { profileId: member.id, pin }),
-    onSuccess: onDone,
+    onSuccess: () => onDone(true),
     onError: (e) => setError(e instanceof Error ? e.message : 'Could not save.'),
   })
   const mismatch = again.length === 4 && again !== pin
@@ -91,7 +91,7 @@ function PinForm({ member, onDone }: { member: Member; onDone: () => void }) {
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
           Save PIN
         </button>
-        <button type="button" className="btn btn-quiet" onClick={onDone}>
+        <button type="button" className="btn btn-quiet" onClick={() => onDone()}>
           Cancel
         </button>
       </div>
@@ -161,6 +161,7 @@ function EmailForm({ member, onSaved }: { member: Member; onSaved: () => void })
 export default function PeoplePage() {
   const qc = useQueryClient()
   const [settingFor, setSettingFor] = useState<string | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
   const [invite, setInvite] = useState<Invite | null>(null)
   const [inviteFor, setInviteFor] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -274,7 +275,16 @@ export default function PeoplePage() {
                   See his screen
                 </button>
               )}
-              <button type="button" className="btn btn-quiet" onClick={() => setSettingFor(settingFor === m.id ? null : m.id)} aria-expanded={settingFor === m.id}>
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={() => {
+                  setError(null)
+                  setSaved(null)
+                  setSettingFor(settingFor === m.id ? null : m.id)
+                }}
+                aria-expanded={settingFor === m.id}
+              >
                 Set PIN
               </button>
             </div>
@@ -286,11 +296,18 @@ export default function PeoplePage() {
             {settingFor === m.id && (
               <PinForm
                 member={m}
-                onDone={() => {
+                onDone={(didSave?: boolean) => {
                   setSettingFor(null)
+                  if (didSave) setSaved(m.id)
                   qc.invalidateQueries({ queryKey: ['parent-overview'] })
                 }}
               />
+            )}
+
+            {saved === m.id && settingFor !== m.id && (
+              <p className="mt-2 text-[14px]" style={{ color: 'var(--ok)' }} role="status">
+                PIN saved.
+              </p>
             )}
 
             {inviteFor === m.id && invite && (

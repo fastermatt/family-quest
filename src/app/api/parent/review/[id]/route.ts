@@ -34,12 +34,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (error) return bad(error.message, 500)
     if (!data?.length) return bad('Already reviewed.', 409)
 
-    // The reward he unlocked with this proof is locked again.
-    await admin
-      .from('privilege_requests')
-      .update({ status: 'denied', responded_at: new Date().toISOString(), response_note: 'A chore was sent back. Redo it first.' })
-      .eq('requested_by', child.id)
-      .eq('status', 'pending')
+    // The reward is locked again; drop his open ask so he can ask once it is redone.
+    await admin.from('privilege_requests').delete().eq('requested_by', child.id).eq('status', 'pending')
     return NextResponse.json({ ok: true, status: 'rejected' })
   }
 

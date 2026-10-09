@@ -190,7 +190,7 @@ function ChoreForm({
                   aria-pressed={on}
                   aria-label={DAY_NAMES[i]}
                   onClick={() => set('recurrence_days', on ? d.recurrence_days.filter((x) => x !== i) : [...d.recurrence_days, i])}
-                  className="h-11 flex-1 rounded-[10px] border text-[15px] font-semibold transition-colors duration-150"
+                  className="h-11 min-w-11 flex-1 rounded-[10px] border text-[15px] font-semibold transition-colors duration-150"
                   style={{
                     borderColor: on ? 'var(--accent)' : 'var(--line)',
                     background: on ? 'rgba(45,212,191,0.16)' : 'var(--surface-2)',
@@ -235,7 +235,6 @@ function ChoreForm({
             inputMode="numeric"
             min={0}
             max={1000}
-            step={10}
             className="field"
             value={d.xp_value}
             onChange={(e) => set('xp_value', Number(e.target.value))}
@@ -424,7 +423,7 @@ export default function ChoresPage() {
           </>
         ) : (
           <>
-            <button type="button" className="btn btn-quiet" onClick={() => update.mutate({ id: c.id, body: { active: true } })}>
+            <button type="button" className="btn btn-quiet" onClick={() => update.mutate({ id: c.id, body: { active: true } })} aria-label={`Turn on ${c.name}`}>
               Turn on
             </button>
             <button

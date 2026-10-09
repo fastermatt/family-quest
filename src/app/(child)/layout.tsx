@@ -3,7 +3,6 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { ChildViewBanner } from '@/components/child-view-banner'
-import Image from 'next/image'
 
 function ChildHeader() {
   return (
@@ -11,12 +10,13 @@ function ChildHeader() {
       className="fixed top-0 left-0 right-0 z-40 flex items-center justify-center px-4 bg-[#020617]/80 backdrop-blur-md border-b border-white/10"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(56px + env(safe-area-inset-top, 0px))' }}
     >
-      <Image src="/logo.svg" alt="Home Base" width={120} height={32} priority />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo.svg" alt="ChoreZap" height={40} width={38} style={{ height: 40, width: 'auto' }} />
     </header>
   )
 }
 
-const HEADER_OFFSET = 'calc(56px + env(safe-area-inset-top, 0px))'
+const HEADER_OFFSET = 'calc(56px + 16px + env(safe-area-inset-top, 0px))'
 
 export default async function ChildLayout({
   children,

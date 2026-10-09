@@ -19,7 +19,7 @@ const STATUS = {
   submitted: { label: 'Waiting for review', color: 'var(--wait)', Icon: Clock },
   shown: { label: 'Shown', color: 'var(--ok)', Icon: Check },
   approved: { label: 'Done', color: 'var(--ok)', Icon: Check },
-  rejected: { label: 'Redo', color: 'var(--redo)', Icon: RotateCcw },
+  rejected: { label: 'Sent back', color: 'var(--redo)', Icon: RotateCcw },
   missed: { label: 'Missed', color: 'var(--miss)', Icon: X },
 } as const
 

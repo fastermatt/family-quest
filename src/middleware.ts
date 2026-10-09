@@ -38,6 +38,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/setup-pin' ||
     pathname === '/api/setup-pin' ||
     pathname === '/api/logout' ||
+    pathname === '/api/generate-task-instances' || // checks parent session or Bearer secret itself
     pathname === '/api/family-members' ||
     pathname === '/api/set-child-token'
 

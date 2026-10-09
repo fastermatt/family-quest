@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function findByToken(token: string) {
-  if (token.length < 20) return null
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return null
   const { data } = await adminClient()
     .from('profiles')
     .select('id, name, avatar_emoji, join_token_expires_at')

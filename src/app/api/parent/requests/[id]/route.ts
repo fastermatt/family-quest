@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  const { error } = await admin
+  const { data: changed, error } = await admin
     .from('privilege_requests')
     .update({
       status: body.action === 'approve' ? 'approved' : 'denied',
@@ -47,6 +47,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
     .eq('id', id)
     .eq('status', 'pending')
+    .select('id')
   if (error) return bad(error.message, 500)
+  if (!changed?.length) return bad('Already answered.', 409)
   return NextResponse.json({ ok: true })
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomBytes } from 'crypto'
+import { randomUUID } from 'crypto'
 import { bad, requireParent } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (!target) return bad('Not in your family.', 404)
 
-  const token = randomBytes(24).toString('base64url')
+  // profiles.join_token is a uuid column; v4 gives 122 random bits.
+  const token = randomUUID()
   const expires = new Date(Date.now() + HOURS * 3600 * 1000).toISOString()
   const { error } = await admin
     .from('profiles')
