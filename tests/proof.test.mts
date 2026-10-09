@@ -212,3 +212,14 @@ test('actionLabel matches the visible action', () => {
   assert.equal(actionLabel('imessage_video', 'pending'), 'Sent it')
   assert.equal(actionLabel('check', 'pending'), 'Done')
 })
+
+import { choresLeft, isCrunchTime } from '../src/lib/kid-view.ts'
+
+test('4 PM crunch flags unfinished required chores only', () => {
+  const t = (status: string, required = true) => ({ id: status, status, task_template: { required } })
+  const tasks = [t('pending'), t('rejected'), t('submitted'), t('approved'), t('pending', false)]
+  assert.equal(choresLeft(tasks), 2)
+  assert.equal(isCrunchTime(15 * 60 + 59, 2), false)
+  assert.equal(isCrunchTime(16 * 60, 2), true)
+  assert.equal(isCrunchTime(20 * 60, 0), false)
+})

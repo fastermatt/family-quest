@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
+import { AlarmClock, AlertTriangle, Camera, Check, ChevronDown, ChevronUp, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
 import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
 import { PointsStrip } from '@/components/kid/points-strip'
 import { QuestionCard } from '@/components/kid/question-card'
@@ -11,7 +11,7 @@ import { haptic, playChime, primeAudio, useMuted } from '@/components/kid/sound'
 import { ProofIcon, StatusPill, type StatusKey } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
 import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
-import { actionLabel, groupChores, isPrivateHost, progressCounts, progressLine } from '@/lib/kid-view'
+import { actionLabel, choresLeft, groupChores, isCrunchTime, isPrivateHost, progressCounts, progressLine } from '@/lib/kid-view'
 import { shrinkPhoto } from '@/lib/image'
 
 interface Chore {
@@ -73,6 +73,7 @@ function xpLabel(c: Chore) {
 interface RowProps {
   c: Chore
   nowMinutes: number
+  urgent?: boolean
   fresh: boolean
   chip?: string
   sending: boolean
@@ -86,7 +87,7 @@ interface RowProps {
   actionRef: (el: HTMLButtonElement | null) => void
 }
 
-function ChoreRow({ c, nowMinutes, fresh, chip, sending, locked, error, hasFile, onStart, onRetry, onNewPhoto, rowRef, actionRef }: RowProps) {
+function ChoreRow({ c, nowMinutes, urgent, fresh, chip, sending, locked, error, hasFile, onStart, onRetry, onNewPhoto, rowRef, actionRef }: RowProps) {
   const type = proofTypeOf(c.task_template)
   const st = statusOf(c, nowMinutes)
   const open = c.status === 'pending' || c.status === 'rejected' || c.status === 'missed'
@@ -124,7 +125,15 @@ function ChoreRow({ c, nowMinutes, fresh, chip, sending, locked, error, hasFile,
     <li
       ref={rowRef}
       className="row relative p-3"
-      style={isRedo ? { borderColor: 'rgba(251,191,36,0.45)' } : st === 'approved' || st === 'shown' ? { background: 'rgba(52,211,153,0.06)' } : undefined}
+      style={
+        urgent && canAct && !extra
+          ? { borderColor: 'rgba(251,113,133,0.7)', background: 'rgba(251,113,133,0.08)' }
+          : isRedo
+            ? { borderColor: 'rgba(251,191,36,0.45)' }
+            : st === 'approved' || st === 'shown'
+              ? { background: 'rgba(52,211,153,0.06)' }
+              : undefined
+      }
     >
       <div className="flex items-center gap-3">
         <IconTile tone={st === 'approved' || st === 'shown' ? 'ok' : st === 'submitted' ? 'wait' : 'idle'} fresh={fresh}>
@@ -378,6 +387,15 @@ export default function ChildToday() {
   const waitingXp = tasks.filter((t) => t.status === 'submitted').reduce((n, t) => n + (t.task_template.xp_value || 0), 0)
   const anySending = Object.keys(sending).length > 0
   const requiredList = tasks.filter((t) => t.task_template.required !== false)
+  const left = choresLeft(tasks)
+  const crunch = isCrunchTime(nowMinutes, left)
+
+  const goToFirstOpen = () => {
+    const first = [...groups.fix, ...groups.next].find((t) => t.task_template.required !== false) ?? groups.fix[0] ?? groups.next[0]
+    if (!first) return
+    rowEls.current.get(first.id)?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' })
+    actionEls.current.get(first.id)?.focus({ preventScroll: true })
+  }
 
   const goToFirstFix = () => {
     const first = groups.fix[0]
@@ -398,6 +416,7 @@ export default function ChildToday() {
       key={c.id}
       c={c}
       nowMinutes={nowMinutes}
+      urgent={crunch}
       fresh={!!fresh[c.id]}
       chip={chips[c.id]}
       sending={!!sending[c.id]}
@@ -442,6 +461,25 @@ export default function ChildToday() {
           <MuteButton muted={muted} onToggle={toggleMute} />
         </div>
       </header>
+
+      {crunch && (
+        <section
+          role="alert"
+          className="fq-urgent rounded-[14px] border-2 p-4"
+          style={{ borderColor: 'var(--miss)', background: 'rgba(251,113,133,0.14)' }}
+        >
+          <p className="flex items-center gap-2 text-[20px] font-extrabold leading-tight" style={{ color: 'var(--miss)' }}>
+            <AlarmClock className="h-6 w-6 shrink-0" aria-hidden />
+            It&rsquo;s after 4. {left} chore{left === 1 ? '' : 's'} still not done.
+          </p>
+          <p className="mt-1 text-[15px]" style={{ color: 'var(--ink)' }}>
+            Finish {left === 1 ? 'it' : 'them'} now. Rewards stay locked until {left === 1 ? 'it is' : 'they are'} done.
+          </p>
+          <button type="button" className="btn btn-primary mt-3 w-full" onClick={goToFirstOpen}>
+            Show me
+          </button>
+        </section>
+      )}
 
       <PointsStrip xp={me.xp} waiting={waitingXp} reduced={reduced} />
 
@@ -515,8 +553,8 @@ export default function ChildToday() {
 
       {groups.next.length > 0 && (
         <section aria-labelledby="g-next">
-          <h2 id="g-next" className="mb-2 text-[19px]">
-            Do next
+          <h2 id="g-next" className="mb-2 text-[19px]" style={crunch ? { color: 'var(--miss)' } : undefined}>
+            {crunch ? 'Do these now' : 'Do next'}
           </h2>
           <ul className="space-y-2">{groups.next.map(renderRow)}</ul>
         </section>

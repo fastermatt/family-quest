@@ -3,9 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useState } from 'react'
-import { AlertTriangle, Check, Dumbbell, Flame, Lightbulb, Trophy, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
+import { AlarmClock, AlertTriangle, Check, Dumbbell, Flame, Lightbulb, Trophy, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
 import { ProofIcon, StatusPill, type StatusKey } from './status'
 import { formatClock } from '@/lib/dates'
+import { choresLeft, isCrunchTime } from '@/lib/kid-view'
 import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
 
 interface Task {
@@ -17,7 +18,7 @@ interface Task {
   reviewNote: string | null
   hasPhoto: boolean
   prompt: string | null
-  template: { name: string; proof_type?: ProofType; photo_required?: boolean; cutoff_time?: string | null; xp_value: number } | null
+  template: { name: string; proof_type?: ProofType; photo_required?: boolean; cutoff_time?: string | null; required?: boolean; xp_value: number } | null
 }
 
 interface TrainingLog {
@@ -378,6 +379,20 @@ export function ParentToday() {
                 )}
               </p>
             </div>
+            {(() => {
+              const left = choresLeft(child.tasks.map((t) => ({ id: t.id, status: t.status, task_template: { required: t.template?.required } })))
+              if (!isCrunchTime(data.nowMinutes, left)) return null
+              return (
+                <p
+                  role="status"
+                  className="mb-3 flex items-center gap-2 rounded-[12px] border-2 px-4 py-3 text-[16px] font-bold"
+                  style={{ borderColor: 'var(--miss)', background: 'rgba(251,113,133,0.12)', color: 'var(--miss)' }}
+                >
+                  <AlarmClock className="h-5 w-5 shrink-0" aria-hidden />
+                  After 4 PM: {child.name} still has {left} chore{left === 1 ? '' : 's'} to do.
+                </p>
+              )
+            })()}
             {child.tasks.length === 0 ? (
               <p className="panel p-4 text-[15px]" style={{ color: 'var(--ink-2)' }}>
                 Nothing on {child.name}&apos;s list today.{' '}

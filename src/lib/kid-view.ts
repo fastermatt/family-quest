@@ -112,3 +112,17 @@ export function actionLabel(type: string, status: string): string {
   if (type === 'imessage_video') return 'Sent it'
   return 'Done'
 }
+
+/** From 4:00 PM (family time) unfinished required chores get loud. */
+export const CRUNCH_MINUTES = 16 * 60
+
+/** Required chores the kid still has to do (not counting ones waiting on a parent). */
+export function choresLeft(tasks: KidChore[]): number {
+  return tasks.filter(
+    (t) => t.task_template.required !== false && (t.status === 'pending' || t.status === 'rejected' || t.status === 'missed')
+  ).length
+}
+
+export function isCrunchTime(nowMinutes: number, left: number): boolean {
+  return nowMinutes >= CRUNCH_MINUTES && left > 0
+}
