@@ -75,5 +75,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js).*)'],
+  // Skip static files (the logo, icons, manifest) so signed-out screens can load them.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.png|icons|manifest.json|sw.js|.*\\.(?:svg|png|jpg|jpeg|webp|ico|txt)$).*)'],
 }
