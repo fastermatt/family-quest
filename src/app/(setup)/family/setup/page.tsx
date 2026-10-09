@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AVATAR_EMOJIS } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { GlassCard } from '@/components/ui/glass-card'
+import { Brand } from '@/components/brand'
 
 interface Child {
   name: string
@@ -87,7 +88,7 @@ export default function FamilySetupPage() {
       <div className="w-full max-w-md">
         {step === 'family' ? (
           <GlassCard className="p-8">
-            <div className="flex justify-center mb-4"><img src="/logo.svg" alt="ChoreZap" className="w-32" /></div>
+            <div className="flex justify-center mb-4"><Brand size="lg" /></div>
             <h1 className="text-3xl font-bold mb-2">Welcome to ChoreZap</h1>
             <p className="text-white/60 mb-8">
               Let&apos;s set up your family&apos;s command center

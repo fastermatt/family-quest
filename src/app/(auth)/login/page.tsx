@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Brand } from '@/components/brand'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -45,11 +46,7 @@ export default function LoginPage() {
         {!submitted ? (
           <div className="glass-card p-8 md:p-12">
             <div className="text-center mb-8">
-              <img
-                src="/logo.svg"
-                alt="ChoreZap"
-                className="w-48 md:w-56 mx-auto mb-2"
-              />
+              <div className="mb-2"><Brand size="lg" /></div>
               <p className="text-white/60 text-lg font-manrope">
                 Your family&apos;s command center
               </p>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ReportProblem } from '@/components/report-problem'
+import { Brand } from '@/components/brand'
 
 interface FamilyMember {
   id: string
@@ -114,8 +115,7 @@ export default function FamilyLoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="ChoreZap" height={120} width={114} className="mx-auto mb-3" style={{ height: 120, width: "auto" }} />
+          <div className="mb-3"><Brand size="lg" /></div>
           <p className="text-white/50 text-sm">Who are you?</p>
         </div>
 
