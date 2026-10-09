@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { bad, requireChild } from '@/lib/api-auth'
 import { todayInTz } from '@/lib/dates'
-import { privilegeUnlocked } from '@/lib/proof'
+import { activeOnly, privilegeUnlocked } from '@/lib/proof'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,14 +22,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const { data: tasks } = await admin
     .from('task_instances')
-    .select('id, template_id, status, task_template:task_templates(proof_type, photo_required, required)')
+    .select('id, template_id, status, task_template:task_templates(proof_type, photo_required, required, active)')
     .eq('assigned_to', me.id)
     .eq('due_date', todayInTz())
 
-  const shaped = (tasks ?? []).map((t) => ({
-    ...t,
-    task_template: Array.isArray(t.task_template) ? t.task_template[0] : t.task_template,
-  }))
+  const shaped = activeOnly(tasks)
   if (!privilegeUnlocked(reward, shaped)) return bad('Finish and show your chores first.', 403)
 
   const { data: open } = await admin

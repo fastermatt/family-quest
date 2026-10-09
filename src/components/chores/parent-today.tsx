@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { AlertTriangle, Check, Flame, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
 import { ProofIcon, StatusPill, type StatusKey } from './status'
 import { formatClock } from '@/lib/dates'
-import { isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
+import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
 
 interface Task {
   id: string
@@ -86,6 +86,13 @@ export function ParentToday() {
   const answer = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'approve' | 'deny' }) => post(`/api/parent/requests/${id}`, { action }),
     onError: (e) => setError(e instanceof Error ? e.message : 'That did not save.'),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['parent-overview'] }),
+  })
+
+  // Normally the 5am job does this; this is the manual fallback.
+  const makeList = useMutation({
+    mutationFn: () => post('/api/generate-task-instances', {}),
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not make the list.'),
     onSettled: () => qc.invalidateQueries({ queryKey: ['parent-overview'] }),
   })
 
@@ -227,7 +234,7 @@ export function ParentToday() {
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {QUICK_NOTES.map((q) => (
-                          <button key={q} type="button" className="btn btn-quiet !min-h-9 !px-3 text-[14px]" onClick={() => setNote(q)}>
+                          <button key={q} type="button" className="btn btn-quiet !px-3 text-[14px]" onClick={() => setNote(q)}>
                             {q}
                           </button>
                         ))}
@@ -298,7 +305,7 @@ export function ParentToday() {
       </section>
 
       {data.children.map((child) => {
-        const done = child.tasks.filter((t) => t.status === 'approved' || t.status === 'submitted').length
+        const done = child.tasks.filter((t) => countsTowardUnlock({ id: t.id, status: t.status, task_template: t.template ?? undefined })).length
         return (
           <section key={child.id} aria-labelledby={`kid-${child.id}`}>
             <div className="mb-3 flex items-baseline justify-between gap-3">
@@ -306,7 +313,7 @@ export function ParentToday() {
                 {child.emoji} {child.name}&apos;s day
               </h2>
               <p className="flex items-center gap-3 text-[14px]" style={{ color: 'var(--ink-2)' }}>
-                {child.tasks.length > 0 && <span>{done} of {child.tasks.length} done</span>}
+                {child.tasks.length > 0 && <span>{done} of {child.tasks.length} shown</span>}
                 {child.streak > 0 && (
                   <span className="flex items-center gap-1" style={{ color: 'var(--redo)' }}>
                     <Flame className="h-3.5 w-3.5" aria-hidden />
@@ -317,7 +324,11 @@ export function ParentToday() {
             </div>
             {child.tasks.length === 0 ? (
               <p className="panel p-4 text-[15px]" style={{ color: 'var(--ink-2)' }}>
-                No chores today. <Link href="/tasks" className="underline underline-offset-2">Set some up</Link>.
+                Nothing on {child.name}&apos;s list today.{' '}
+                <button type="button" className="underline underline-offset-2" onClick={() => makeList.mutate()} disabled={makeList.isPending}>
+                  {makeList.isPending ? 'Making it…' : 'Make today’s list now'}
+                </button>{' '}
+                or <Link href="/tasks" className="underline underline-offset-2">add chores</Link>.
               </p>
             ) : (
               <ul className="panel divide-y" style={{ borderColor: 'var(--line)' }}>

@@ -255,7 +255,7 @@ function ChoreForm({
                   type="button"
                   aria-pressed={on}
                   onClick={() => set('assigned_to', on ? d.assigned_to.filter((x) => x !== k.id) : [...d.assigned_to, k.id])}
-                  className="btn !min-h-10 border text-[15px]"
+                  className="btn border text-[15px]"
                   style={{
                     borderColor: on ? 'var(--accent)' : 'var(--line)',
                     background: on ? 'rgba(45,212,191,0.16)' : 'transparent',
@@ -396,7 +396,7 @@ export default function ChoresPage() {
         />
       </li>
     ) : (
-      <li key={c.id} className="row flex items-center gap-3 p-3" style={c.active ? undefined : { opacity: 0.7 }}>
+      <li key={c.id} className="row flex items-center gap-3 p-3" style={c.active ? undefined : { background: 'transparent', borderStyle: 'dashed' }}>
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]" style={{ background: 'rgba(148,163,184,0.1)', color: 'var(--ink-2)' }}>
           <ProofIcon type={proofTypeOf(c)} />
         </span>

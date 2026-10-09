@@ -29,12 +29,27 @@ export default function FamilyLoginPage() {
   const [familyCodeError, setFamilyCodeError] = useState('')
 
   useEffect(() => {
-    fetch('/api/family-members')
+    // Which family? The session cookie, then ?family= from a sign-in link,
+    // then the last family this device signed into.
+    let remembered: string | null = null
+    try {
+      remembered = new URLSearchParams(window.location.search).get('family') || localStorage.getItem('family_id')
+    } catch {}
+    const url = remembered ? `/api/family-members?family_id=${encodeURIComponent(remembered)}` : '/api/family-members'
+    fetch(url)
       .then(r => {
         if (r.status === 404) { setNeedsFamilyCode(true); setLoading(false); return null }
         return r.json()
       })
-      .then(data => { if (data) { setMembers(data); setLoading(false) } })
+      .then(data => {
+        if (data) {
+          if (remembered) {
+            try { localStorage.setItem('family_id', remembered) } catch {}
+          }
+          setMembers(data)
+          setLoading(false)
+        }
+      })
       .catch(() => setLoading(false))
   }, [])
 
@@ -96,7 +111,7 @@ export default function FamilyLoginPage() {
         {/* Family code entry — shown when multiple families exist and no session */}
         {needsFamilyCode && (
           <div className="space-y-4">
-            <p className="text-white/60 text-sm text-center">Enter your family's invite code to get started</p>
+            <p className="text-white/60 text-sm text-center">Enter your family&apos;s invite code to get started</p>
             <input
               type="text"
               value={familyCode}

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { formatClock, timeToMinutes, zonedParts, FAMILY_TZ } from './dates'
-import { PROOF_META, proofTypeOf } from './proof'
+import { PROOF_META, activeOnly, proofTypeOf } from './proof'
 import { PHOTO_BUCKET, photoPathFromUrl } from './storage'
 
 export interface SummaryChore {
@@ -31,6 +31,11 @@ export interface FamilySummary {
 }
 
 const DONE = new Set(['approved', 'submitted'])
+
+function shownForParents(c: SummaryChore) {
+  // "Done" in the email means shown: approved, or a photo that is in.
+  return c.status === 'approved' || (c.status === 'submitted' && c.proofIcon === PROOF_META.photo.icon)
+}
 
 function minutesInTz(iso: string): number {
   return zonedParts(new Date(iso), FAMILY_TZ).minutes
@@ -69,11 +74,12 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
         .select('status, photo_url, submitted_at, review_note, task_template:task_templates(*)')
         .eq('assigned_to', kid.id)
         .eq('due_date', date)
-      if (!tasks?.length) continue
+      const live = activeOnly(tasks)
+      if (!live.length) continue
 
       const chores: SummaryChore[] = []
-      for (const t of tasks) {
-        const tpl = Array.isArray(t.task_template) ? t.task_template[0] : t.task_template
+      for (const t of live) {
+        const tpl = t.task_template
         const cutoff: string | null = tpl?.cutoff_time ?? null
         const late = !!(cutoff && t.submitted_at && minutesInTz(t.submitted_at) > timeToMinutes(cutoff))
 
@@ -97,13 +103,13 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
       }
 
       // Not done first: that is what a parent needs to see.
-      chores.sort((a, b) => Number(DONE.has(a.status)) - Number(DONE.has(b.status)))
+      chores.sort((a, b) => Number(shownForParents(a)) - Number(shownForParents(b)))
 
       children.push({
         name: kid.name,
         emoji: kid.avatar_emoji ?? '',
         streak: kid.current_streak ?? 0,
-        done: chores.filter((c) => DONE.has(c.status)).length,
+        done: chores.filter(shownForParents).length,
         total: chores.length,
         chores,
       })
@@ -125,7 +131,9 @@ function statusLabel(c: SummaryChore): { text: string; color: string } {
     case 'approved':
       return { text: c.late ? 'Done (late)' : 'Done', color: '#15803d' }
     case 'submitted':
-      return { text: c.late ? 'Sent for review (late)' : 'Sent for review', color: '#0f766e' }
+      return c.proofIcon === PROOF_META.photo.icon
+        ? { text: c.late ? 'Photo sent (late)' : 'Photo sent', color: '#15803d' }
+        : { text: c.late ? 'Says done (late), confirm it' : 'Says done, confirm it', color: '#0f766e' }
     case 'rejected':
       return { text: 'Sent back to redo', color: '#b45309' }
     default:
@@ -140,7 +148,7 @@ export function summarySubject(s: FamilySummary): string {
 export function summaryText(s: FamilySummary): string {
   return s.children
     .map((c) => {
-      const lines = c.chores.map((ch) => `${DONE.has(ch.status) ? '✓' : '✗'} ${ch.name} — ${statusLabel(ch).text}`)
+      const lines = c.chores.map((ch) => `${shownForParents(ch) ? '✓' : DONE.has(ch.status) ? '…' : '✗'} ${ch.name} — ${statusLabel(ch).text}`)
       return `${c.name}: ${c.done} of ${c.total} done${c.streak ? ` · ${c.streak}-day streak` : ''}\n${lines.join('\n')}`
     })
     .join('\n\n')

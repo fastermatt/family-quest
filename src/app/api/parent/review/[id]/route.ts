@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { bad, requireParent } from '@/lib/api-auth'
-import { todayInTz } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: task } = await admin
     .from('task_instances')
-    .select('id, status, assigned_to, due_date, task_template:task_templates(xp_value), child:profiles!task_instances_assigned_to_fkey(id, family_id, xp_total, current_streak, longest_streak, streak_last_updated)')
+    .select('id, status, assigned_to, due_date, task_template:task_templates(xp_value), child:profiles!task_instances_assigned_to_fkey(id, family_id)')
     .eq('id', id)
     .single()
   if (!task) return bad('Chore not found.', 404)
@@ -34,6 +33,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .select('id')
     if (error) return bad(error.message, 500)
     if (!data?.length) return bad('Already reviewed.', 409)
+
+    // The reward he unlocked with this proof is locked again.
+    await admin
+      .from('privilege_requests')
+      .update({ status: 'denied', responded_at: new Date().toISOString(), response_note: 'A chore was sent back. Redo it first.' })
+      .eq('requested_by', child.id)
+      .eq('status', 'pending')
     return NextResponse.json({ ok: true, status: 'rejected' })
   }
 
@@ -52,34 +58,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (error) return bad(error.message, 500)
   if (!approved?.length) return bad('Already reviewed.', 409)
 
-  const update: Record<string, unknown> = { xp_total: (child.xp_total ?? 0) + xp }
-
-  // Streak: every chore for that day approved, counted once per day.
-  const today = todayInTz()
-  const lastStreak = child.streak_last_updated ? String(child.streak_last_updated).slice(0, 10) : null
-  if (task.due_date === today && lastStreak !== today) {
-    const { data: all } = await admin
-      .from('task_instances')
-      .select('status')
-      .eq('assigned_to', child.id)
-      .eq('due_date', today)
-    if (all?.length && all.every((t) => t.status === 'approved')) {
-      const streak = (child.current_streak ?? 0) + 1
-      update.current_streak = streak
-      update.longest_streak = Math.max(streak, child.longest_streak ?? 0)
-      update.streak_last_updated = today
-    }
-  }
-  await admin.from('profiles').update(update).eq('id', child.id)
-
-  const { data: fam } = await admin.from('families').select('family_xp').eq('id', me.family_id).single()
-  if (fam) {
-    const familyXp = (fam.family_xp ?? 0) + xp
-    await admin
-      .from('families')
-      .update({ family_xp: familyXp, family_level: Math.floor(familyXp / 5000) + 1 })
-      .eq('id', me.family_id)
-  }
+  // Atomic increment; the streak is settled each morning from the day's results.
+  const { error: xpErr } = await admin.rpc('award_xp', { p_child: child.id, p_family: me.family_id, p_xp: xp })
+  if (xpErr) console.error('award_xp failed:', xpErr.message)
 
   return NextResponse.json({ ok: true, status: 'approved', xp })
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireChild } from '@/lib/api-auth'
 import { todayInTz, zonedParts } from '@/lib/dates'
-import { privilegeUnlocked } from '@/lib/proof'
+import { activeOnly, privilegeUnlocked } from '@/lib/proof'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +17,7 @@ export async function GET() {
     admin.from('profiles').select('id, name, avatar_emoji, current_streak, xp_total').eq('id', me.id).single(),
     admin
       .from('task_instances')
-      .select('id, template_id, status, submitted_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day)')
+      .select('id, template_id, status, submitted_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day, active)')
       .eq('assigned_to', me.id)
       .eq('due_date', date),
     admin
@@ -32,7 +32,7 @@ export async function GET() {
       .gte('created_at', new Date(now.getTime() - 36 * 3600 * 1000).toISOString()),
   ])
 
-  const shaped = (tasks ?? []).map((t) => ({
+  const shaped = activeOnly(tasks).map((t) => ({
     id: t.id,
     template_id: t.template_id,
     status: t.status,
@@ -40,7 +40,7 @@ export async function GET() {
     reviewNote: t.review_note,
     hasPhoto: !!t.photo_url,
     prompt: t.photo_challenge_prompt,
-    task_template: Array.isArray(t.task_template) ? t.task_template[0] : t.task_template,
+    task_template: t.task_template,
   }))
 
   const order = { morning: 0, anytime: 1, afternoon: 2, evening: 3 } as Record<string, number>

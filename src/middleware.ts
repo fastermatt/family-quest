@@ -45,7 +45,10 @@ export async function middleware(request: NextRequest) {
     // Allow access if user has a persistent profile_token cookie
     const profileToken = request.cookies.get('profile_token')?.value
     if (!profileToken) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 })
+      }
+      return NextResponse.redirect(new URL('/family-login', request.url))
     }
     // Has a token — let the layout validate it
     return supabaseResponse

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireParent } from '@/lib/api-auth'
 import { todayInTz, zonedParts } from '@/lib/dates'
+import { activeOnly } from '@/lib/proof'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export async function GET() {
     admin.from('families').select('id, name').eq('id', me.family_id).single(),
     admin
       .from('profiles')
-      .select('id, name, role, avatar_emoji, current_streak, xp_total, pin_hash')
+      .select('id, name, role, avatar_emoji, current_streak, xp_total, pin_hash, email')
       .eq('family_id', me.family_id)
       .order('role', { ascending: false })
       .order('name'),
@@ -29,7 +30,7 @@ export async function GET() {
   const { data: tasks } = kidIds.length
     ? await admin
         .from('task_instances')
-        .select('id, assigned_to, status, submitted_at, reviewed_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day)')
+        .select('id, assigned_to, status, submitted_at, reviewed_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day, active)')
         .in('assigned_to', kidIds)
         .eq('due_date', date)
     : { data: [] }
@@ -82,6 +83,7 @@ export async function GET() {
       role: m.role,
       emoji: m.avatar_emoji,
       hasPin: !!m.pin_hash,
+      email: m.role === 'parent' ? m.email ?? null : null,
     })),
     children: kids.map((k) => ({
       id: k.id,
@@ -89,7 +91,8 @@ export async function GET() {
       emoji: k.avatar_emoji,
       streak: k.current_streak ?? 0,
       xp: k.xp_total ?? 0,
-      tasks: (tasks ?? []).filter((t) => t.assigned_to === k.id).map(shape),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tasks: activeOnly((tasks ?? []) as any[]).filter((t) => t.assigned_to === k.id).map(shape),
     })),
     olderWaiting: (olderWaiting ?? []).map(shape),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

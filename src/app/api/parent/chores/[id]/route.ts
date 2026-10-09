@@ -40,6 +40,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .upsert(next.map((assigned_to) => ({ template_id: id, assigned_to })), { onConflict: 'template_id,assigned_to', ignoreDuplicates: true })
   }
 
+  if (values.proof_type === 'photo') {
+    // A stricter rule applies today too: a "done" with no photo goes back to his list.
+    await admin
+      .from('task_instances')
+      .update({ status: 'pending', submitted_at: null })
+      .eq('template_id', id)
+      .eq('due_date', todayInTz())
+      .eq('status', 'submitted')
+      .is('photo_url', null)
+  }
+
   if (values.active === false) {
     // Off means off today too: drop today's copy if he has not started it.
     await admin.from('task_instances').delete().eq('template_id', id).eq('due_date', todayInTz()).eq('status', 'pending')

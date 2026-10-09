@@ -230,7 +230,7 @@ export default function ChildToday() {
                     st === 'rejected'
                       ? { borderColor: 'rgba(251,191,36,0.45)' }
                       : st === 'approved' || st === 'shown'
-                        ? { opacity: 0.78 }
+                        ? { background: 'rgba(52,211,153,0.06)' }
                         : undefined
                   }
                 >
@@ -297,7 +297,11 @@ export default function ChildToday() {
         <section aria-label="Rewards">
           <h2 className="mb-1 text-[19px]">Rewards</h2>
           <p className="mb-3 text-[14px]" style={{ color: 'var(--ink-2)' }}>
-            {allDone ? 'You showed everything. Ask for one.' : 'These open when every chore is shown.'}
+            {required.length === 0
+              ? 'Rewards open once today\'s chores are on your list and shown.'
+              : allDone
+                ? 'You showed everything. Ask for one.'
+                : 'These open when every chore is shown.'}
           </p>
           <ul className="space-y-2">
             {rewards.map((r) => (
@@ -319,7 +323,9 @@ export default function ChildToday() {
                           ? 'Not today.'
                           : r.unlocked
                             ? 'Open'
-                            : `Locked, ${left} chore${left === 1 ? '' : 's'} left`}
+                            : required.length === 0
+                              ? 'Locked, no chores on your list yet'
+                              : `Locked, ${left} chore${left === 1 ? '' : 's'} left`}
                   </p>
                 </div>
                 {r.unlocked && !r.request && (

@@ -99,3 +99,11 @@ export function isPastCutoff(cutoffTime: string | null | undefined, nowMinutes: 
   if (!cutoffTime) return false
   return nowMinutes > timeToMinutes(cutoffTime)
 }
+
+/** Unwrap Supabase embeds and drop chores a parent has turned off. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function activeOnly<T extends { task_template?: any }>(rows: T[] | null | undefined): (T & { task_template: any })[] {
+  return (rows ?? [])
+    .map((r) => ({ ...r, task_template: Array.isArray(r.task_template) ? r.task_template[0] : r.task_template }))
+    .filter((r) => r.task_template?.active !== false)
+}

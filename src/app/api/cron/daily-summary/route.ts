@@ -20,6 +20,11 @@ export async function GET(request: NextRequest) {
     return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
   }
 
+  if (!summaries.length) {
+    console.warn('daily-summary: no family has both chores today and a parent email on file')
+    return NextResponse.json({ success: true, sent: 0, note: 'No parent emails on file, or no chores today.' })
+  }
+
   const results = []
   for (const s of summaries) {
     const r = await sendSummaryEmail(s, appUrl)

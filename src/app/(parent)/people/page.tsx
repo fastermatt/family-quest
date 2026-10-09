@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { AlertTriangle, Check, Copy, KeyRound, Link2, Loader2, MessageSquare } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Eye, KeyRound, Link2, Loader2, Mail, MessageSquare } from 'lucide-react'
 
 interface Member {
   id: string
@@ -10,6 +10,7 @@ interface Member {
   role: 'parent' | 'child'
   emoji: string
   hasPin: boolean
+  email: string | null
 }
 
 interface Invite {
@@ -98,6 +99,65 @@ function PinForm({ member, onDone }: { member: Member; onDone: () => void }) {
   )
 }
 
+function EmailForm({ member, onSaved }: { member: Member; onSaved: () => void }) {
+  const [email, setEmail] = useState(member.email ?? '')
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const save = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/parent/members/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Could not save.')
+    },
+    onSuccess: () => {
+      setMsg({ ok: true, text: email ? 'Saved. The summary comes each evening.' : 'Removed. No more summaries.' })
+      onSaved()
+    },
+    onError: (e) => setMsg({ ok: false, text: e instanceof Error ? e.message : 'Could not save.' }),
+  })
+  const changed = email.trim() !== (member.email ?? '')
+  return (
+    <form
+      className="mt-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        save.mutate()
+      }}
+    >
+      <label htmlFor={`email-${member.id}`} className="mb-1.5 flex items-center gap-1.5 text-[14px] font-semibold">
+        <Mail className="h-4 w-4" aria-hidden />
+        Evening summary email
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={`email-${member.id}`}
+          className="field"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          placeholder="name@example.com"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            setMsg(null)
+          }}
+        />
+        <button type="submit" className="btn btn-quiet" disabled={!changed || save.isPending}>
+          {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : 'Save'}
+        </button>
+      </div>
+      {msg && (
+        <p className="mt-1.5 text-[14px]" style={{ color: msg.ok ? 'var(--ok)' : 'var(--miss)' }} role={msg.ok ? 'status' : 'alert'}>
+          {msg.text}
+        </p>
+      )}
+    </form>
+  )
+}
+
 export default function PeoplePage() {
   const qc = useQueryClient()
   const [settingFor, setSettingFor] = useState<string | null>(null)
@@ -105,14 +165,26 @@ export default function PeoplePage() {
   const [inviteFor, setInviteFor] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copiedSignIn, setCopiedSignIn] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  // "See his screen": parent views the kid's Today without signing out.
+  const viewAs = async (childId: string) => {
+    const res = await fetch('/api/switch-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: childId }),
+    })
+    if (res.ok) window.location.assign('/home')
+    else setError('Could not open his screen. Sign in with your PIN and try again.')
+  }
+
+  const { data, isLoading, error: loadError } = useQuery({
     queryKey: ['parent-overview'],
     queryFn: async () => {
       const res = await fetch('/api/parent/overview', { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Could not load.')
-      return json as { members: Member[]; me: { id?: string } }
+      return json as { members: Member[]; family: { id: string; name: string } }
     },
   })
 
@@ -138,6 +210,17 @@ export default function PeoplePage() {
     }
   }
 
+  if (loadError) {
+    return (
+      <div className="panel p-5" role="alert">
+        <p className="font-semibold">Family did not load.</p>
+        <p className="mt-1 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+          {loadError instanceof Error ? loadError.message : 'Reload the page.'}
+        </p>
+      </div>
+    )
+  }
+
   if (isLoading || !data) {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading family">
@@ -147,6 +230,17 @@ export default function PeoplePage() {
         ))}
       </div>
     )
+  }
+
+  const signInLink = `${window.location.origin}/family-login?family=${data.family.id}`
+
+  const copySignIn = async () => {
+    try {
+      await navigator.clipboard.writeText(signInLink)
+      setCopiedSignIn(true)
+    } catch {
+      setError('Could not copy. Press and hold the link to copy it.')
+    }
   }
 
   const parents = data.members.filter((m) => m.role === 'parent')
@@ -169,14 +263,25 @@ export default function PeoplePage() {
                   {m.hasPin ? 'PIN set' : 'No PIN yet'}
                 </p>
               </div>
-              <button type="button" className="btn btn-quiet" onClick={() => makeLink.mutate(m.id)} disabled={makeLink.isPending && inviteFor === m.id}>
-                <Link2 className="h-4 w-4" aria-hidden />
-                PIN link
-              </button>
+              {m.role === 'parent' ? (
+                <button type="button" className="btn btn-quiet" onClick={() => makeLink.mutate(m.id)} disabled={makeLink.isPending && inviteFor === m.id}>
+                  <Link2 className="h-4 w-4" aria-hidden />
+                  PIN link
+                </button>
+              ) : (
+                <button type="button" className="btn btn-quiet" onClick={() => viewAs(m.id)}>
+                  <Eye className="h-4 w-4" aria-hidden />
+                  See his screen
+                </button>
+              )}
               <button type="button" className="btn btn-quiet" onClick={() => setSettingFor(settingFor === m.id ? null : m.id)} aria-expanded={settingFor === m.id}>
                 Set PIN
               </button>
             </div>
+
+            {m.role === 'parent' && (
+              <EmailForm member={m} onSaved={() => qc.invalidateQueries({ queryKey: ['parent-overview'] })} />
+            )}
 
             {settingFor === m.id && (
               <PinForm
@@ -229,6 +334,28 @@ export default function PeoplePage() {
           <span>{error}</span>
         </div>
       )}
+
+      <section className="panel p-4" aria-labelledby="signin-h">
+        <h2 id="signin-h" className="text-[17px]">
+          Sign-in link
+        </h2>
+        <p className="mt-1 text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          Open this once on each phone or iPad and add it to the Home Screen. It shows the family and asks for a PIN.
+        </p>
+        <p className="field mt-3 flex items-center break-all py-2 text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          {signInLink}
+        </p>
+        <div className="mt-2 flex gap-2">
+          <a className="btn btn-quiet flex-1" href={`sms:&body=${encodeURIComponent(`ChoreZap sign-in: ${signInLink}`)}`}>
+            <MessageSquare className="h-4 w-4" aria-hidden />
+            Text it
+          </a>
+          <button type="button" className="btn btn-quiet" onClick={copySignIn}>
+            {copiedSignIn ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+            {copiedSignIn ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      </section>
 
       {block('Parents', parents)}
       {block('Kids', kids)}

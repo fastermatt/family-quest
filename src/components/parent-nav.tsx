@@ -17,8 +17,14 @@ export function ParentNav() {
 
   const signOut = async () => {
     setLeaving(true)
-    await fetch('/api/logout', { method: 'POST' }).catch(() => {})
-    window.location.href = '/family-login'
+    const res = await fetch('/api/logout', { method: 'POST' }).catch(() => null)
+    const { familyId } = (await res?.json().catch(() => ({}))) ?? {}
+    if (familyId) {
+      try {
+        localStorage.setItem('family_id', familyId)
+      } catch {}
+    }
+    window.location.href = familyId ? `/family-login?family=${familyId}` : '/family-login'
   }
 
   return (

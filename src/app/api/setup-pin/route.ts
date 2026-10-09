@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as bcrypt from 'bcryptjs'
-import { adminClient } from '@/lib/session'
+import { adminClient, getSessionProfile } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +31,13 @@ export async function POST(req: NextRequest) {
     .select('access_token, role')
   if (error || !data?.length) return NextResponse.json({ error: 'Could not save. Try the link again.' }, { status: 409 })
 
-  const res = NextResponse.json({ ok: true, role: data[0].role })
+  // If this device is already signed in (say, Dad setting up Grey's PIN on
+  // his own phone), keep that session. Only sign in on a fresh device.
+  if (await getSessionProfile()) {
+    return NextResponse.json({ ok: true, role: data[0].role, signedIn: false })
+  }
+
+  const res = NextResponse.json({ ok: true, role: data[0].role, signedIn: true })
   res.cookies.set('profile_token', data[0].access_token, {
     path: '/',
     httpOnly: true,

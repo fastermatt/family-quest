@@ -1,6 +1,6 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { requireParent } from '@/lib/api-auth'
 import { generateTaskInstances } from '@/lib/generate'
 
 export const dynamic = 'force-dynamic'
@@ -35,21 +35,11 @@ async function run() {
   }
 }
 
-// The parent's "Generate today's tasks" button, or an external scheduler.
+// The parent's "Make today's list now" button, or an external scheduler.
 export async function POST(request: NextRequest) {
   if (!isCron(request)) {
-    const cookieStore = await cookies()
-    const profileToken = cookieStore.get('profile_token')?.value
-    if (!profileToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: caller } = await admin()
-      .from('profiles')
-      .select('role')
-      .eq('access_token', profileToken)
-      .single()
-    if (!caller || caller.role !== 'parent') {
-      return NextResponse.json({ error: 'Only parents can generate tasks' }, { status: 403 })
-    }
+    const auth = await requireParent()
+    if (auth.error) return auth.error
   }
   return run()
 }

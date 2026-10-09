@@ -12,30 +12,29 @@ export default async function ParentLayout({
   const supabase = await createClient()
   const cookieStore = await cookies()
 
-  const { data: { user } } = await supabase.auth.getUser()
-
+  // Same order as every API route (src/lib/session.ts): PIN cookie first,
+  // then an email login. Two different orders meant two different people.
   let profile = null
-
-  if (user) {
-    // Normal Supabase auth path
-    const { data } = await supabase
+  const profileToken = cookieStore.get('profile_token')?.value
+  if (profileToken) {
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { data } = await supabaseAdmin
       .from('profiles')
       .select('*')
-      .eq('auth_user_id', user.id)
+      .eq('access_token', profileToken)
       .single()
     profile = data
-  } else {
-    // Token-based auth path (link login)
-    const profileToken = cookieStore.get('profile_token')?.value
-    if (profileToken) {
-      const supabaseAdmin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-      const { data } = await supabaseAdmin
+  }
+  if (!profile) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabase
         .from('profiles')
         .select('*')
-        .eq('access_token', profileToken)
+        .eq('auth_user_id', user.id)
         .single()
       profile = data
     }

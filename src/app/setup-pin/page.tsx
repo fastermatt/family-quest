@@ -12,6 +12,7 @@ export default function SetupPinPage() {
   const [pin, setPin] = useState('')
   const [again, setAgain] = useState('')
   const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
 
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('token') ?? ''
@@ -40,6 +41,11 @@ export default function SetupPinPage() {
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || 'Could not save.')
+      if (j.signedIn === false) {
+        setDone(true)
+        setSaving(false)
+        return
+      }
       window.location.href = j.role === 'child' ? '/home' : '/dashboard'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.')
@@ -65,7 +71,16 @@ export default function SetupPinPage() {
         </div>
       )}
 
-      {who && (
+      {who && done && (
+        <div className="panel p-5" role="status">
+          <h1 className="text-[22px]">PIN saved</h1>
+          <p className="mt-2 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+            This phone stays signed in as you. {who.name} can now sign in with the new PIN on the family screen.
+          </p>
+        </div>
+      )}
+
+      {who && !done && (
         <form onSubmit={save} className="space-y-5">
           <div>
             <p className="text-[28px]" aria-hidden>

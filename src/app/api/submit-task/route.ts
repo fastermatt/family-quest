@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
 
   // A rejected chore can be redone; anything else already in review cannot.
   if (task.status !== 'pending' && task.status !== 'rejected') {
-    return NextResponse.json({ error: 'Task already submitted' }, { status: 400 })
+    return NextResponse.json({ error: 'Already sent. A parent will check it.' }, { status: 400 })
   }
 
   const template = Array.isArray(task.task_template) ? task.task_template[0] : task.task_template
@@ -110,12 +110,12 @@ export async function POST(req: NextRequest) {
   if (hasPhoto && photo) {
     const MAX_SIZE = 5 * 1024 * 1024
     if (photo.size > MAX_SIZE) {
-      return NextResponse.json({ error: 'Photo must be under 5MB' }, { status: 400 })
+      return NextResponse.json({ error: 'That photo is too big. Take it again with the camera button.' }, { status: 400 })
     }
 
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
     if (!allowedTypes.includes(photo.type)) {
-      return NextResponse.json({ error: 'Invalid image type' }, { status: 400 })
+      return NextResponse.json({ error: 'That photo did not work. Take a new one with the camera button.' }, { status: 400 })
     }
 
     const fileExt = photo.name.split('.').pop() || 'jpg'
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
 
     if (uploadError) {
       console.error('Photo upload error:', uploadError)
-      return NextResponse.json({ error: 'Photo upload failed' }, { status: 500 })
+      return NextResponse.json({ error: 'The photo did not upload. Check the Wi-Fi and try again.' }, { status: 500 })
     }
 
     const { data: urlData } = supabaseAdmin.storage
