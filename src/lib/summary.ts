@@ -23,6 +23,7 @@ export interface ChildSummary {
   chores: SummaryChore[]
   question: string
   answer: string | null
+  training: { restDay: boolean; skills: string[]; workedOn: string | null; winPrompt: string | null; win: string | null } | null
 }
 
 export interface FamilySummary {
@@ -112,6 +113,13 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
         .eq('day', date)
         .maybeSingle()
 
+      const { data: tl } = await supabase
+        .from('training_logs')
+        .select('rest_day, skills, worked_on, win_prompt, win')
+        .eq('profile_id', kid.id)
+        .eq('day', date)
+        .maybeSingle()
+
       // Not done first: that is what a parent needs to see.
       chores.sort((a, b) => Number(shownForParents(a)) - Number(shownForParents(b)))
 
@@ -124,6 +132,7 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
         chores,
         question: refl?.question ?? questionFor(date),
         answer: refl?.answer ?? null,
+        training: tl ? { restDay: tl.rest_day, skills: tl.skills ?? [], workedOn: tl.worked_on, winPrompt: tl.win_prompt, win: tl.win } : null,
       })
     }
 
@@ -161,7 +170,12 @@ export function summaryText(s: FamilySummary): string {
   return s.children
     .map((c) => {
       const lines = c.chores.map((ch) => `${shownForParents(ch) ? '✓' : DONE.has(ch.status) ? '…' : '✗'} ${ch.name} — ${statusLabel(ch).text}`)
-      const q = `\n\nQuestion of the day: ${c.question}\n${c.answer ? `“${c.answer}”` : 'Not answered.'}`
+      const tr = c.training
+        ? c.training.restDay
+          ? '\n\nCalisthenics: rest day'
+          : `\n\nCalisthenics: ${c.training.skills.join(', ')}\n${c.training.workedOn ?? ''}\nWin: ${c.training.win ?? ''}`
+        : '\n\nCalisthenics: not logged'
+      const q = tr + `\n\nQuestion of the day: ${c.question}\n${c.answer ? `“${c.answer}”` : 'Not answered.'}`
       return `${c.name}: ${c.done} of ${c.total} done${c.streak ? ` · ${c.streak}-day streak` : ''}\n${lines.join('\n')}${q}`
     })
     .join('\n\n')
@@ -199,6 +213,18 @@ export function summaryHtml(s: FamilySummary, appUrl: string): string {
   <div style="font-size:14px;color:${allDone ? '#15803d' : '#b91c1c'};margin:4px 0 8px">${allDone ? 'Everything done today.' : `${c.total - c.done} still not done.`}${c.streak ? ` <span style="color:#64748b">· ${c.streak}-day streak</span>` : ''}</div>
   <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">${rows}</table>
   <div style="margin-top:14px;padding:12px 14px;background:#f8fafc;border-radius:8px">
+    <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Calisthenics</div>
+    ${
+      !c.training
+        ? '<div style="font-size:15px;color:#94a3b8;margin-top:4px">Not logged today.</div>'
+        : c.training.restDay
+          ? '<div style="font-size:15px;color:#334155;margin-top:4px">Rest day.</div>'
+          : `<div style="font-size:15px;color:#0f172a;font-weight:600;margin-top:2px">${esc(c.training.skills.join(' · '))}</div>
+    <div style="font-size:15px;color:#334155;margin-top:2px">${esc(c.training.workedOn ?? '')}</div>
+    <div style="font-size:15px;color:#334155;margin-top:4px">🏆 ${c.training.winPrompt ? `<span style="color:#64748b">${esc(c.training.winPrompt)}</span> ` : ''}“${esc(c.training.win ?? '')}”</div>`
+    }
+  </div>
+  <div style="margin-top:10px;padding:12px 14px;background:#f8fafc;border-radius:8px">
     <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Question of the day</div>
     <div style="font-size:15px;color:#0f172a;font-weight:600;margin-top:2px">${esc(c.question)}</div>
     <div style="font-size:15px;color:${c.answer ? '#334155' : '#94a3b8'};margin-top:4px">${c.answer ? `“${esc(c.answer)}”` : 'Not answered today.'}</div>

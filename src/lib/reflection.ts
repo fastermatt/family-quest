@@ -46,6 +46,10 @@ export const QUESTIONS: string[] = [
   'What are you looking forward to, and what do you need to do to get there?',
   'How did you use your free time today? Would you change anything?',
   'What do you want Mom and Dad to know about your day?',
+  'How is training calisthenics teaching you discipline?',
+  'What skill took the longest to learn? What kept you going?',
+  'How is getting stronger like getting your chores done every day?',
+  'What would you tell a younger kid who wants to learn a planche or a muscle-up?',
 ]
 
 /** Days since 1970 for a YYYY-MM-DD date (calendar arithmetic, no time zone). */

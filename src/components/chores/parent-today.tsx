@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useState } from 'react'
-import { AlertTriangle, Check, Flame, Lightbulb, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
+import { AlertTriangle, Check, Dumbbell, Flame, Lightbulb, Trophy, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
 import { ProofIcon, StatusPill, type StatusKey } from './status'
 import { formatClock } from '@/lib/dates'
 import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
@@ -20,6 +20,15 @@ interface Task {
   template: { name: string; proof_type?: ProofType; photo_required?: boolean; cutoff_time?: string | null; xp_value: number } | null
 }
 
+interface TrainingLog {
+  day: string
+  restDay: boolean
+  skills: string[]
+  workedOn: string | null
+  winPrompt: string | null
+  win: string | null
+}
+
 interface Overview {
   me: { name: string }
   family: { name: string }
@@ -33,6 +42,7 @@ interface Overview {
     tasks: Task[]
     question?: string
     reflections?: { day: string; question: string; answer: string }[]
+    training?: TrainingLog[]
   }[]
   olderWaiting: Task[]
   requests: { id: string; childId: string; reward: string }[]
@@ -390,6 +400,7 @@ export function ParentToday() {
                 })}
               </ul>
             )}
+            <Training child={child} today={data.date} />
             <Reflections child={child} today={data.date} />
           </section>
         )
@@ -437,6 +448,68 @@ function Reflections({ child, today }: { child: Overview['children'][number]; to
                 <p className="mt-0.5 whitespace-pre-wrap text-[15px]" style={{ color: 'var(--ink-2)' }}>
                   “{r.answer}”
                 </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function LogLines({ log }: { log: TrainingLog }) {
+  if (log.restDay) return <p className="text-[15px]" style={{ color: 'var(--ink-2)' }}>Rest day{log.win ? `: ${log.win}` : '.'}</p>
+  return (
+    <div className="space-y-1 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+      {log.skills.length > 0 && <p className="font-semibold" style={{ color: 'var(--ink)' }}>{log.skills.join(' · ')}</p>}
+      {log.workedOn && <p>{log.workedOn}</p>}
+      {log.win && (
+        <p className="flex items-start gap-1.5">
+          <Trophy className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--redo)' }} aria-hidden />
+          <span>
+            {log.winPrompt && <span style={{ color: 'var(--ink-3)' }}>{log.winPrompt} </span>}
+            “{log.win}”
+          </span>
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** The child's calisthenics log for today, with the last two weeks below. */
+function Training({ child, today }: { child: Overview['children'][number]; today: string }) {
+  const all = child.training ?? []
+  const todays = all.find((r) => r.day === today)
+  const past = all.filter((r) => r.day !== today)
+  const trainedDays = all.filter((r) => !r.restDay).length
+  return (
+    <div className="panel mt-3 p-4">
+      <p className="flex items-center justify-between gap-2 text-[13px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-3)' }}>
+        <span className="flex items-center gap-1.5">
+          <Dumbbell className="h-3.5 w-3.5" aria-hidden />
+          Calisthenics
+        </span>
+        {trainedDays > 0 && <span className="normal-case tracking-normal">{trainedDays} training days in 2 weeks</span>}
+      </p>
+      <div className="mt-1.5">
+        {todays ? (
+          <LogLines log={todays} />
+        ) : (
+          <p className="text-[14px]" style={{ color: 'var(--ink-3)' }}>
+            {child.name} has not logged training today.
+          </p>
+        )}
+      </div>
+      {past.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[14px] font-semibold" style={{ color: 'var(--accent)' }}>
+            Past training ({past.length})
+          </summary>
+          <ul className="mt-2 space-y-3">
+            {past.map((r) => (
+              <li key={r.day}>
+                <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>{shortDay(r.day)}</p>
+                <LogLines log={r} />
               </li>
             ))}
           </ul>

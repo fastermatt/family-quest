@@ -129,3 +129,15 @@ test('answers must be a real sentence', () => {
   assert.ok(cleanAnswer(42).error)
   assert.equal(cleanAnswer('  I learned   to fold my shirts.  ').answer, 'I learned to fold my shirts.')
 })
+
+import { cleanTraining, winPromptFor } from '../src/lib/training.ts'
+
+test('training log validation', () => {
+  assert.ok(cleanTraining({ skills: [], worked_on: 'lots of planche', win: 'held it' }).error)
+  assert.ok(cleanTraining({ skills: ['Planche'], worked_on: 'x', win: 'held it' }).error)
+  assert.ok(cleanTraining({ skills: ['Planche'], worked_on: '5 sets of tuck planche', win: '' }).error)
+  const ok = cleanTraining({ skills: ['Planche', 'Planche', 'Hacking'], worked_on: '5 sets of tuck planche', win: '12 second hold' })
+  assert.deepEqual(ok.values?.skills, ['Planche'])
+  assert.equal(cleanTraining({ rest_day: true }).values?.rest_day, true)
+  assert.equal(winPromptFor('2026-10-09'), winPromptFor('2026-10-09'))
+})

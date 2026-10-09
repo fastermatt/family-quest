@@ -67,6 +67,15 @@ export async function GET() {
         .order('day', { ascending: false })
     : { data: [] }
 
+  const { data: training } = kidIds.length
+    ? await admin
+        .from('training_logs')
+        .select('profile_id, day, rest_day, skills, worked_on, win_prompt, win')
+        .in('profile_id', kidIds)
+        .gte('day', addDays(date, -13))
+        .order('day', { ascending: false })
+    : { data: [] }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const shape = (t: any) => {
     const tpl = Array.isArray(t.task_template) ? t.task_template[0] : t.task_template
@@ -108,6 +117,9 @@ export async function GET() {
       reflections: (reflections ?? [])
         .filter((r) => r.profile_id === k.id)
         .map((r) => ({ day: r.day, question: r.question, answer: r.answer })),
+      training: (training ?? [])
+        .filter((r) => r.profile_id === k.id)
+        .map((r) => ({ day: r.day, restDay: r.rest_day, skills: r.skills ?? [], workedOn: r.worked_on, winPrompt: r.win_prompt, win: r.win })),
     })),
     olderWaiting: (olderWaiting ?? []).map(shape),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
