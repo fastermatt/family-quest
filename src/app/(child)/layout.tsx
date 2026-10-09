@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { ChildViewBanner } from '@/components/child-view-banner'
+import { ReportProblem } from '@/components/report-problem'
 
 function ChildHeader() {
   return (
@@ -53,6 +54,9 @@ export default async function ChildLayout({
             style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
           >
             {children}
+            <div className="mt-10 flex justify-center">
+              <ReportProblem />
+            </div>
           </div>
         </>
       )
@@ -77,6 +81,9 @@ export default async function ChildLayout({
             style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
           >
             {children}
+            <div className="mt-10 flex justify-center">
+              <ReportProblem />
+            </div>
           </div>
         </>
       )
@@ -112,6 +119,9 @@ export default async function ChildLayout({
         style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
       >
         {children}
+        <div className="mt-10 flex justify-center">
+          <ReportProblem />
+        </div>
       </div>
     </>
   )

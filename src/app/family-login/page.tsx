@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { ReportProblem } from '@/components/report-problem'
 
 interface FamilyMember {
   id: string
@@ -268,6 +269,9 @@ export default function FamilyLoginPage() {
             </div>
           </div>
         )}
+        <div className="mt-10 flex justify-center">
+          <ReportProblem />
+        </div>
       </div>
 
       <style jsx>{`
