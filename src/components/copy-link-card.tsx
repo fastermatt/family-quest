@@ -34,8 +34,8 @@ export function CopyLinkCard({ name, emoji, role, link }: CopyLinkCardProps) {
   const handleShare = async () => {
     if (navigator.share) {
       await navigator.share({
-        title: `FamilyQuest — ${name}'s link`,
-        text: `Tap this link to open FamilyQuest as ${name}`,
+        title: `ChoreZap — ${name}'s link`,
+        text: `Tap this link to open ChoreZap as ${name}`,
         url: link,
       })
     } else {

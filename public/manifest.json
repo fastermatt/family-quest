@@ -2,7 +2,6 @@
   "name": "ChoreZap",
   "short_name": "ChoreZap",
   "description": "Zap chores. Earn sparks. Level up.",
-  "start_url": "/child-login",
   "scope": "/",
   "display": "standalone",
   "background_color": "#020617",
@@ -12,7 +11,14 @@
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
@@ -24,5 +30,6 @@
   "categories": [
     "productivity",
     "lifestyle"
-  ]
+  ],
+  "id": "/"
 }

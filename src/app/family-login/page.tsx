@@ -27,6 +27,16 @@ export default function FamilyLoginPage() {
   const [familyCode, setFamilyCode] = useState('')
   const [familyCodeError, setFamilyCodeError] = useState('')
 
+  // Already signed in on this device? Go straight to the right screen.
+  useEffect(() => {
+    fetch('/api/active-profile')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (p?.role) router.replace(p.role === 'child' ? '/home' : '/dashboard')
+      })
+      .catch(() => {})
+  }, [router])
+
   useEffect(() => {
     // Which family? The session cookie, then ?family= from a sign-in link,
     // then the last family this device signed into.

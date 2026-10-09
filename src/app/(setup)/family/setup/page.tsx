@@ -87,8 +87,8 @@ export default function FamilySetupPage() {
       <div className="w-full max-w-md">
         {step === 'family' ? (
           <GlassCard className="p-8">
-            <div className="flex justify-center mb-4"><img src="/logo.svg" alt="Home Base" className="w-32" /></div>
-            <h1 className="text-3xl font-bold mb-2">Welcome to Home Base</h1>
+            <div className="flex justify-center mb-4"><img src="/logo.svg" alt="ChoreZap" className="w-32" /></div>
+            <h1 className="text-3xl font-bold mb-2">Welcome to ChoreZap</h1>
             <p className="text-white/60 mb-8">
               Let&apos;s set up your family&apos;s command center
             </p>

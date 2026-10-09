@@ -47,7 +47,7 @@ export default function LoginPage() {
             <div className="text-center mb-8">
               <img
                 src="/logo.svg"
-                alt="Home Base"
+                alt="ChoreZap"
                 className="w-48 md:w-56 mx-auto mb-2"
               />
               <p className="text-white/60 text-lg font-manrope">
