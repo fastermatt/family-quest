@@ -1,389 +1,551 @@
 'use client'
 
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { GlassCard } from '@/components/ui/glass-card'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Profile, TaskTemplate, TaskAssignment, TimeOfDay } from '@/lib/types'
+import { AlertTriangle, ChevronDown, Lock, Loader2, Pencil, Plus, Power, Trash2, X } from 'lucide-react'
+import { ProofIcon, PROOF_SHORT } from '@/components/chores/status'
+import { formatClock } from '@/lib/dates'
+import { PROOF_TYPES, proofTypeOf, type ProofType } from '@/lib/proof'
 
-const CATEGORIES = [
-  'Kitchen',
-  'Bedroom',
-  'Bathroom',
-  'Laundry',
-  'Pet Care',
-  'Outdoor',
-  'Schoolwork',
-  'General',
-]
+interface Kid {
+  id: string
+  name: string
+  emoji: string
+}
 
-const RECURRENCES = [
-  { value: 'daily', label: 'Daily' },
+interface Chore {
+  id: string
+  name: string
+  recurrence_type: string
+  recurrence_days: number[] | null
+  proof_type?: ProofType
+  photo_required?: boolean
+  cutoff_time?: string | null
+  required?: boolean
+  xp_value: number
+  active: boolean
+  assigned_to: string[]
+}
+
+interface Reward {
+  id: string
+  name: string
+}
+
+interface Draft {
+  name: string
+  proof_type: ProofType
+  recurrence_type: 'daily' | 'weekdays' | 'weekly' | 'once'
+  recurrence_days: number[]
+  cutoff_time: string
+  required: boolean
+  xp_value: number
+  assigned_to: string[]
+}
+
+const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const OFTEN: { value: Draft['recurrence_type']; label: string }[] = [
+  { value: 'daily', label: 'Every day' },
   { value: 'weekdays', label: 'Weekdays' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
+  { value: 'weekly', label: 'Some days' },
   { value: 'once', label: 'Once' },
 ]
 
-const TIME_OF_DAY_OPTIONS: { value: TimeOfDay; label: string; emoji: string }[] = [
-  { value: 'anytime', label: 'Anytime', emoji: '\u{1F553}' },
-  { value: 'morning', label: 'Morning', emoji: '\u{1F305}' },
-  { value: 'afternoon', label: 'Afternoon', emoji: '\u2600\uFE0F' },
-  { value: 'evening', label: 'Evening', emoji: '\u{1F319}' },
-]
-
-interface TaskInput {
-  name: string
-  category: string
-  assignedTo: string[]
-  recurrence: string
-  photoRequired: boolean
-  xpValue: number
-  difficultyStars: number
-  timeOfDay: TimeOfDay
+const PROOF_HELP: Record<ProofType, string> = {
+  photo: 'He takes a photo in the app. Counts as soon as he sends it; you can send it back.',
+  imessage_video: 'He texts you a video, then taps “Sent it”. You approve after you watch it.',
+  check: 'He taps done. It counts once you confirm.',
 }
 
-export default function TasksPage() {
-  const supabase = createClient()
-  const queryClient = useQueryClient()
+async function call(url: string, method: string, body?: unknown) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error || 'That did not save. Try again.')
+  return json
+}
 
-  const [taskInputs, setTaskInputs] = useState<TaskInput[]>([
-    {
+function summary(c: Chore, kids: Kid[]) {
+  const often =
+    c.recurrence_type === 'daily'
+      ? 'Every day'
+      : c.recurrence_type === 'weekdays'
+        ? 'Weekdays'
+        : c.recurrence_type === 'weekly'
+          ? (c.recurrence_days ?? []).map((d) => DAY_NAMES[d]).join(', ')
+          : c.recurrence_type === 'once'
+            ? 'Once'
+            : c.recurrence_type
+  const who = kids.length > 1 ? kids.filter((k) => c.assigned_to.includes(k.id)).map((k) => k.name).join(', ') : null
+  return [often, PROOF_SHORT[proofTypeOf(c)], c.cutoff_time ? `by ${formatClock(c.cutoff_time)}` : null, who]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function toDraft(c: Chore | null, kids: Kid[]): Draft {
+  if (!c) {
+    return {
       name: '',
-      category: CATEGORIES[0],
-      assignedTo: [],
-      recurrence: 'daily',
-      photoRequired: false,
-      xpValue: 100,
-      difficultyStars: 1,
-      timeOfDay: 'anytime',
-    },
-  ])
-  const [taskText, setTaskText] = useState('')
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
+      proof_type: 'photo',
+      recurrence_type: 'daily',
+      recurrence_days: [],
+      cutoff_time: '',
+      required: true,
+      xp_value: 100,
+      assigned_to: kids.length === 1 ? [kids[0].id] : [],
+    }
+  }
+  return {
+    name: c.name,
+    proof_type: proofTypeOf(c),
+    recurrence_type: (['daily', 'weekdays', 'weekly', 'once'].includes(c.recurrence_type) ? c.recurrence_type : 'daily') as Draft['recurrence_type'],
+    recurrence_days: c.recurrence_days ?? [],
+    cutoff_time: c.cutoff_time ? c.cutoff_time.slice(0, 5) : '',
+    required: c.required !== false,
+    xp_value: c.xp_value,
+    assigned_to: c.assigned_to,
+  }
+}
 
-  const toggleExpanded = (id: string) => {
-    setExpandedCards((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+function ChoreForm({
+  initial,
+  kids,
+  saving,
+  onSave,
+  onCancel,
+  submitLabel,
+}: {
+  initial: Draft
+  kids: Kid[]
+  saving: boolean
+  onSave: (d: Draft) => void
+  onCancel: () => void
+  submitLabel: string
+}) {
+  const [d, setD] = useState<Draft>(initial)
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((prev) => ({ ...prev, [k]: v }))
+  const id = initial.name ? `edit-${initial.name}` : 'new'
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave(d)
+      }}
+    >
+      <div>
+        <label htmlFor={`${id}-name`} className="mb-1.5 block text-[14px] font-semibold">
+          Chore
+        </label>
+        <input
+          id={`${id}-name`}
+          className="field"
+          value={d.name}
+          onChange={(e) => set('name', e.target.value)}
+          placeholder="Feed the chickens"
+          maxLength={80}
+          autoFocus={!initial.name}
+          required
+        />
+      </div>
+
+      <fieldset>
+        <legend className="mb-1.5 text-[14px] font-semibold">How he proves it</legend>
+        <div className="seg" role="group">
+          {PROOF_TYPES.map((p) => (
+            <button key={p} type="button" aria-pressed={d.proof_type === p} onClick={() => set('proof_type', p)}>
+              <ProofIcon type={p} className="h-4 w-4" />
+              <span>{p === 'photo' ? 'Photo' : p === 'imessage_video' ? 'Video' : 'You check'}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          {PROOF_HELP[d.proof_type]}
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend className="mb-1.5 text-[14px] font-semibold">How often</legend>
+        <div className="seg" role="group">
+          {OFTEN.map((o) => (
+            <button key={o.value} type="button" aria-pressed={d.recurrence_type === o.value} onClick={() => set('recurrence_type', o.value)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {d.recurrence_type === 'weekly' && (
+          <div className="mt-2 flex gap-1.5" role="group" aria-label="Days">
+            {DAYS.map((label, i) => {
+              const on = d.recurrence_days.includes(i)
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  aria-pressed={on}
+                  aria-label={DAY_NAMES[i]}
+                  onClick={() => set('recurrence_days', on ? d.recurrence_days.filter((x) => x !== i) : [...d.recurrence_days, i])}
+                  className="h-11 flex-1 rounded-[10px] border text-[15px] font-semibold transition-colors duration-150"
+                  style={{
+                    borderColor: on ? 'var(--accent)' : 'var(--line)',
+                    background: on ? 'rgba(45,212,191,0.16)' : 'var(--surface-2)',
+                    color: on ? 'var(--accent)' : 'var(--ink-2)',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </fieldset>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor={`${id}-due`} className="mb-1.5 block text-[14px] font-semibold">
+            Due by <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>optional</span>
+          </label>
+          <div className="flex gap-2">
+            <input
+              id={`${id}-due`}
+              type="time"
+              className="field"
+              value={d.cutoff_time}
+              onChange={(e) => set('cutoff_time', e.target.value)}
+            />
+            {d.cutoff_time && (
+              <button type="button" className="btn btn-quiet !px-3" onClick={() => set('cutoff_time', '')} aria-label="Clear due time">
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            )}
+          </div>
+        </div>
+        <div>
+          <label htmlFor={`${id}-pts`} className="mb-1.5 block text-[14px] font-semibold">
+            Points
+          </label>
+          <input
+            id={`${id}-pts`}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={1000}
+            step={10}
+            className="field"
+            value={d.xp_value}
+            onChange={(e) => set('xp_value', Number(e.target.value))}
+          />
+        </div>
+      </div>
+
+      {kids.length > 1 && (
+        <fieldset>
+          <legend className="mb-1.5 text-[14px] font-semibold">Who does it</legend>
+          <div className="flex flex-wrap gap-2">
+            {kids.map((k) => {
+              const on = d.assigned_to.includes(k.id)
+              return (
+                <button
+                  key={k.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => set('assigned_to', on ? d.assigned_to.filter((x) => x !== k.id) : [...d.assigned_to, k.id])}
+                  className="btn !min-h-10 border text-[15px]"
+                  style={{
+                    borderColor: on ? 'var(--accent)' : 'var(--line)',
+                    background: on ? 'rgba(45,212,191,0.16)' : 'transparent',
+                    color: on ? 'var(--accent)' : 'var(--ink-2)',
+                  }}
+                >
+                  {k.emoji} {k.name}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
+      )}
+
+      <label className="flex items-start gap-3 text-[15px]">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-5 w-5"
+          checked={d.required}
+          onChange={(e) => set('required', e.target.checked)}
+        />
+        <span>
+          <span className="font-semibold">Must be done before rewards</span>
+          <span className="block text-[14px]" style={{ color: 'var(--ink-2)' }}>
+            Turn off for a bonus chore that earns points but never blocks games or TV.
+          </span>
+        </span>
+      </label>
+
+      <div className="flex gap-2">
+        <button type="submit" className="btn btn-primary flex-1" disabled={saving || !d.name.trim()}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+          {submitLabel}
+        </button>
+        <button type="button" className="btn btn-quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export default function ChoresPage() {
+  const qc = useQueryClient()
+  // "Add a chore" on the Today screen links here with ?new=1.
+  const [adding, setAdding] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('new')
+  )
+  const [editing, setEditing] = useState<string | null>(null)
+  const [showOff, setShowOff] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [rewardName, setRewardName] = useState('')
+
+  const { data, isLoading, error: loadError } = useQuery({
+    queryKey: ['chores'],
+    queryFn: () => call('/api/parent/chores', 'GET') as Promise<{ chores: Chore[]; children: Kid[] }>,
+  })
+  const { data: rewardData } = useQuery({
+    queryKey: ['rewards'],
+    queryFn: () => call('/api/parent/rewards', 'GET') as Promise<{ rewards: Reward[] }>,
+  })
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['chores'] })
+    qc.invalidateQueries({ queryKey: ['parent-overview'] })
+  }
+  const onErr = (e: unknown) => setError(e instanceof Error ? e.message : 'That did not save.')
+
+  const create = useMutation({
+    mutationFn: (d: Draft) => call('/api/parent/chores', 'POST', { ...d, cutoff_time: d.cutoff_time || null }),
+    onMutate: () => setError(null),
+    onSuccess: () => setAdding(false),
+    onError: onErr,
+    onSettled: refresh,
+  })
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => call(`/api/parent/chores/${id}`, 'PATCH', body),
+    onMutate: () => setError(null),
+    onSuccess: () => setEditing(null),
+    onError: onErr,
+    onSettled: refresh,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => call(`/api/parent/chores/${id}`, 'DELETE'),
+    onError: onErr,
+    onSettled: refresh,
+  })
+  const addReward = useMutation({
+    mutationFn: (name: string) => call('/api/parent/rewards', 'POST', { name }),
+    onSuccess: () => setRewardName(''),
+    onError: onErr,
+    onSettled: () => qc.invalidateQueries({ queryKey: ['rewards'] }),
+  })
+  const delReward = useMutation({
+    mutationFn: (id: string) => call(`/api/parent/rewards/${id}`, 'DELETE'),
+    onError: onErr,
+    onSettled: () => qc.invalidateQueries({ queryKey: ['rewards'] }),
+  })
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3" aria-busy="true" aria-label="Loading chores">
+        <div className="skeleton h-10 w-40" />
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-[68px]" />
+        ))}
+      </div>
+    )
+  }
+  if (loadError || !data) {
+    return (
+      <div className="panel p-5" role="alert">
+        <p className="font-semibold">Chores did not load.</p>
+        <p className="mt-1 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+          {loadError instanceof Error ? loadError.message : 'Reload the page.'}
+        </p>
+      </div>
+    )
   }
 
-  const { data: profile } = useQuery({
-    queryKey: ['profile'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser()
-      const { data: p } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('auth_user_id', data.user?.id)
-        .single()
-      return p
-    },
-  })
+  const kids = data.children
+  const on = data.chores.filter((c) => c.active)
+  const off = data.chores.filter((c) => !c.active)
 
-  const { data: children } = useQuery({
-    queryKey: ['children', profile?.family_id],
-    queryFn: async () => {
-      if (!profile?.family_id) return []
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('family_id', profile.family_id)
-        .eq('role', 'child')
-      return data || []
-    },
-    enabled: !!profile?.family_id,
-  })
+  const save = (id: string, d: Draft) =>
+    update.mutate({ id, body: { ...d, cutoff_time: d.cutoff_time || null } })
 
-  const { data: templates } = useQuery({
-    queryKey: ['templates', profile?.family_id],
-    queryFn: async () => {
-      if (!profile?.family_id) return []
-      const { data } = await supabase
-        .from('task_templates')
-        .select('*')
-        .eq('family_id', profile.family_id)
-        .order('created_at', { ascending: false })
-      return (data || []) as TaskTemplate[]
-    },
-    enabled: !!profile?.family_id,
-  })
-
-  const { data: assignments } = useQuery({
-    queryKey: ['assignments', templates?.map((t) => t.id)],
-    queryFn: async () => {
-      if (!templates?.length) return []
-      const { data } = await supabase
-        .from('task_assignments')
-        .select('*')
-        .in(
-          'template_id',
-          templates.map((t) => t.id)
-        )
-      return (data || []) as TaskAssignment[]
-    },
-    enabled: !!templates?.length,
-  })
-
-  const createTasksMutation = useMutation({
-    mutationFn: async () => {
-      if (!profile?.family_id) throw new Error('No family')
-      const tasksToCreate = taskInputs.filter((t) => t.name.trim())
-      for (const task of tasksToCreate) {
-        // Validate XP bounds
-        const xp = Math.max(0, Math.min(task.xpValue || 100, 10000))
-        const difficulty = Math.max(1, Math.min(task.difficultyStars || 1, 5))
-        const { data: template } = await supabase
-          .from('task_templates')
-          .insert([{
-            family_id: profile.family_id,
-            name: task.name.trim().slice(0, 200),
-            category: task.category,
-            recurrence_type: task.recurrence,
-            recurrence_days: [],
-            reset_hour: 0,
-            photo_required: task.photoRequired,
-            xp_value: xp,
-            difficulty_stars: difficulty,
-            time_of_day: task.timeOfDay,
-            active: true,
-            created_by: profile.id,
-          }])
-          .select()
-          .single()
-        for (const childId of task.assignedTo) {
-          await supabase.from('task_assignments').insert([{ template_id: template.id, assigned_to: childId }])
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
-      queryClient.invalidateQueries({ queryKey: ['assignments'] })
-      setTaskInputs([{ name: '', category: CATEGORIES[0], assignedTo: [], recurrence: 'daily', photoRequired: false, xpValue: 100, difficultyStars: 1, timeOfDay: 'anytime' }])
-      setTaskText('')
-    },
-  })
-
-  const deleteTemplateMutation = useMutation({
-    mutationFn: async (id: string) => {
-      if (!window.confirm('Delete this task? This cannot be undone.')) return
-      await supabase.from('task_assignments').delete().eq('template_id', id)
-      await supabase.from('task_templates').delete().eq('id', id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
-      queryClient.invalidateQueries({ queryKey: ['assignments'] })
-    },
-  })
-
-  const toggleActiveMutation = useMutation({
-    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
-      await supabase.from('task_templates').update({ active: !active }).eq('id', id)
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['templates'] }) },
-  })
-
-  const updateFieldMutation = useMutation({
-    mutationFn: async ({ id, field, value }: { id: string; field: string; value: unknown }) => {
-      // Validate bounds for numeric fields
-      let safeValue = value
-      if (field === 'xp_value') safeValue = Math.max(0, Math.min(Number(value) || 100, 10000))
-      if (field === 'difficulty_stars') safeValue = Math.max(1, Math.min(Number(value) || 1, 5))
-      await supabase.from('task_templates').update({ [field]: safeValue }).eq('id', id)
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['templates'] }) },
-  })
-
-  const toggleAssignmentMutation = useMutation({
-    mutationFn: async ({ templateId, childId, assigned }: { templateId: string; childId: string; assigned: boolean }) => {
-      if (assigned) {
-        await supabase.from('task_assignments').delete().eq('template_id', templateId).eq('assigned_to', childId)
-      } else {
-        await supabase.from('task_assignments').insert([{ template_id: templateId, assigned_to: childId }])
-      }
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['assignments'] }) },
-  })
-
-  const parseTaskInput = () => {
-    const lines = taskText.split('\n').map((l) => l.trim()).filter((l) => l)
-    setTaskInputs(lines.map((name) => ({ name, category: CATEGORIES[0], assignedTo: [], recurrence: 'daily', photoRequired: false, xpValue: 100, difficultyStars: 1, timeOfDay: 'anytime' as TimeOfDay })))
-  }
-
-  const getAssignedChildIds = (templateId: string): string[] =>
-    (assignments || []).filter((a) => a.template_id === templateId).map((a) => a.assigned_to)
+  const row = (c: Chore) =>
+    editing === c.id ? (
+      <li key={c.id} className="panel p-4">
+        <ChoreForm
+          initial={toDraft(c, kids)}
+          kids={kids}
+          saving={update.isPending}
+          onSave={(d) => save(c.id, d)}
+          onCancel={() => setEditing(null)}
+          submitLabel="Save changes"
+        />
+      </li>
+    ) : (
+      <li key={c.id} className="row flex items-center gap-3 p-3" style={c.active ? undefined : { opacity: 0.7 }}>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]" style={{ background: 'rgba(148,163,184,0.1)', color: 'var(--ink-2)' }}>
+          <ProofIcon type={proofTypeOf(c)} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[16px] font-semibold leading-snug">{c.name}</p>
+          <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+            {summary(c, kids)}
+            {c.required === false ? ' · bonus' : ''}
+          </p>
+        </div>
+        {c.active ? (
+          <>
+            <button type="button" className="btn btn-quiet !px-3" onClick={() => { setEditing(c.id); setAdding(false) }} aria-label={`Edit ${c.name}`}>
+              <Pencil className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet !px-3"
+              onClick={() => update.mutate({ id: c.id, body: { active: false } })}
+              aria-label={`Turn off ${c.name}`}
+              title="Turn off"
+            >
+              <Power className="h-4 w-4" aria-hidden />
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn btn-quiet" onClick={() => update.mutate({ id: c.id, body: { active: true } })}>
+              Turn on
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger !px-3"
+              onClick={() => {
+                if (window.confirm(`Delete “${c.name}”? Chores he has already done stay in his history.`)) remove.mutate(c.id)
+              }}
+              aria-label={`Delete ${c.name}`}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </button>
+          </>
+        )}
+      </li>
+    )
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold">Task Manager</h1>
-
-      <GlassCard className="p-6">
-        <h2 className="text-2xl font-bold mb-4">Quick Task Entry</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Paste task names (one per line)</label>
-            <textarea value={taskText} onChange={(e) => setTaskText(e.target.value)} placeholder="Clean kitchen\nWash dishes\nOrganize closet" className="w-full h-32" />
-          </div>
-          <Button onClick={parseTaskInput} variant="secondary">Parse Tasks</Button>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[28px] leading-tight">Chores</h1>
+          <p className="text-[15px]" style={{ color: 'var(--ink-2)' }}>
+            New chores go on his list right away.
+          </p>
         </div>
-      </GlassCard>
+        {!adding && (
+          <button type="button" className="btn btn-primary" onClick={() => { setAdding(true); setEditing(null) }}>
+            <Plus className="h-4 w-4" aria-hidden />
+            New chore
+          </button>
+        )}
+      </header>
 
-      {taskInputs.some((t) => t.name.trim()) && (
-        <GlassCard className="p-6">
-          <h2 className="text-2xl font-bold mb-4">Configure Tasks</h2>
-          <div className="space-y-4 max-h-96 overflow-y-auto">
-            {taskInputs.map((task, idx) => task.name.trim() && (
-              <div key={idx} className="glass-card p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs text-white/60 mb-1">Name</label><p className="font-semibold text-sm">{task.name}</p></div>
-                  <div>
-                    <label className="block text-xs text-white/60 mb-1">Category</label>
-                    <select value={task.category} onChange={(e) => { const u=[...taskInputs]; u[idx].category=e.target.value; setTaskInputs(u) }} className="w-full text-sm">
-                      {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-white/60 mb-1">Recurrence</label>
-                    <select value={task.recurrence} onChange={(e) => { const u=[...taskInputs]; u[idx].recurrence=e.target.value; setTaskInputs(u) }} className="w-full text-sm">
-                      {RECURRENCES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-white/60 mb-1">Time of Day</label>
-                    <select value={task.timeOfDay} onChange={(e) => { const u=[...taskInputs]; u[idx].timeOfDay=e.target.value as TimeOfDay; setTaskInputs(u) }} className="w-full text-sm">
-                      {TIME_OF_DAY_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.emoji} {t.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-white/60 mb-1">XP Value</label>
-                    <input type="number" min="10" value={task.xpValue} onChange={(e) => { const u=[...taskInputs]; u[idx].xpValue=parseInt(e.target.value); setTaskInputs(u) }} className="w-full text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-white/60 mb-1">Difficulty</label>
-                    <select value={task.difficultyStars} onChange={(e) => { const u=[...taskInputs]; u[idx].difficultyStars=parseInt(e.target.value); setTaskInputs(u) }} className="w-full text-sm">
-                      {[1,2,3,4,5].map((d) => <option key={d} value={d}>{'\u2B50'.repeat(d)}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={task.photoRequired} onChange={(e) => { const u=[...taskInputs]; u[idx].photoRequired=e.target.checked; setTaskInputs(u) }} id={`photo-${idx}`} />
-                    <label htmlFor={`photo-${idx}`} className="text-xs text-white/60">Photo Required</label>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs text-white/60 mb-2">Assign To</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {children?.map((child) => (
-                      <label key={child.id} className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={task.assignedTo.includes(child.id)} onChange={(e) => { const u=[...taskInputs]; if(e.target.checked){u[idx].assignedTo.push(child.id)}else{u[idx].assignedTo=u[idx].assignedTo.filter((id)=>id!==child.id)}; setTaskInputs(u) }} />
-                        {child.avatar_emoji} {child.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <Button onClick={() => createTasksMutation.mutate()} disabled={createTasksMutation.isPending} className="w-full mt-4">
-            {createTasksMutation.isPending ? 'Creating...' : 'Save All Tasks'}
-          </Button>
-        </GlassCard>
+      {error && (
+        <div className="row flex items-start gap-2 p-3 text-[15px]" role="alert" style={{ borderColor: 'rgba(251,113,133,0.4)' }}>
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--miss)' }} aria-hidden />
+          <span>{error}</span>
+        </div>
       )}
 
-      <div>
-        <h2 className="text-2xl font-bold mb-4">Your Tasks ({templates?.length || 0})</h2>
-        <div className="space-y-3">
-          {templates?.map((template) => {
-            const isExpanded = expandedCards.has(template.id)
-            const assignedIds = getAssignedChildIds(template.id)
-            const todOption = TIME_OF_DAY_OPTIONS.find((t) => t.value === (template.time_of_day || 'anytime'))
+      {adding && (
+        <section className="panel p-4" aria-label="New chore">
+          <h2 className="mb-4 text-[19px]">New chore</h2>
+          <ChoreForm
+            initial={toDraft(null, kids)}
+            kids={kids}
+            saving={create.isPending}
+            onSave={(d) => create.mutate(d)}
+            onCancel={() => setAdding(false)}
+            submitLabel="Add chore"
+          />
+        </section>
+      )}
 
-            return (
-              <GlassCard key={template.id} className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-bold text-lg">{template.name}</p>
-                    <div className="flex flex-wrap gap-2 text-xs text-white/60 mt-1">
-                      <span>{template.category}</span>
-                      <span>•</span>
-                      <span>{template.xp_value} XP</span>
-                      <span>•</span>
-                      <span>{'\u2B50'.repeat(template.difficulty_stars)}</span>
-                      {template.photo_required && <><span>•</span><span>📸</span></>}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button onClick={() => toggleExpanded(template.id)} className="px-3 py-1 rounded-lg text-xs font-medium bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 transition-all">
-                      {isExpanded ? 'Less \u25B2' : 'Edit \u25BC'}
-                    </button>
-                    <button onClick={() => toggleActiveMutation.mutate({ id: template.id, active: template.active })}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${template.active ? 'bg-green-500/20 border border-green-400/50 text-green-300' : 'bg-white/5 border border-white/10 text-white/60'}`}>
-                      {template.active ? 'Active' : 'Inactive'}
-                    </button>
-                    <button onClick={() => deleteTemplateMutation.mutate(template.id)} className="px-3 py-1 rounded-lg text-xs font-medium bg-red-500/20 border border-red-400/50 text-red-300 hover:bg-red-500/30">
-                      Delete
-                    </button>
-                  </div>
-                </div>
+      <section aria-label="Active chores">
+        <h2 className="mb-3 text-[19px]">On his list ({on.length})</h2>
+        {on.length === 0 ? (
+          <p className="panel p-4 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+            No chores yet. Add the first one above.
+          </p>
+        ) : (
+          <ul className="space-y-2">{on.map(row)}</ul>
+        )}
+      </section>
 
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <select value={template.recurrence_type} onChange={(e) => updateFieldMutation.mutate({ id: template.id, field: 'recurrence_type', value: e.target.value })}
-                    className="text-xs rounded-lg px-2.5 py-1.5 bg-white/5 border border-white/10 text-white/80 appearance-none cursor-pointer hover:bg-white/10 transition-all">
-                    {RECURRENCES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                  </select>
+      {off.length > 0 && (
+        <section aria-label="Turned off chores">
+          <button
+            type="button"
+            className="flex min-h-11 items-center gap-2 text-[15px] font-semibold"
+            style={{ color: 'var(--ink-2)' }}
+            aria-expanded={showOff}
+            onClick={() => setShowOff(!showOff)}
+          >
+            <ChevronDown className="h-4 w-4 transition-transform duration-150" style={{ transform: showOff ? 'rotate(180deg)' : undefined }} aria-hidden />
+            Turned off ({off.length})
+          </button>
+          {showOff && <ul className="mt-2 space-y-2">{off.map(row)}</ul>}
+        </section>
+      )}
 
-                  <select value={template.time_of_day || 'anytime'} onChange={(e) => updateFieldMutation.mutate({ id: template.id, field: 'time_of_day', value: e.target.value })}
-                    className="text-xs rounded-lg px-2.5 py-1.5 bg-white/5 border border-white/10 text-white/80 appearance-none cursor-pointer hover:bg-white/10 transition-all">
-                    {TIME_OF_DAY_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.emoji} {t.label}</option>)}
-                  </select>
-
-                  <button onClick={() => updateFieldMutation.mutate({ id: template.id, field: 'photo_required', value: !template.photo_required })}
-                    className={`text-xs rounded-lg px-2.5 py-1.5 border transition-all cursor-pointer ${template.photo_required ? 'bg-teal-500/20 border-teal-400/50 text-teal-300' : 'bg-white/5 border-white/10 text-white/40'}`}>
-                    📸 Photo {template.photo_required ? 'On' : 'Off'}
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                  {children?.map((child) => {
-                    const isAssigned = assignedIds.includes(child.id)
-                    return (
-                      <label key={child.id} className={`flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 border cursor-pointer transition-all ${isAssigned ? 'bg-teal-500/20 border-teal-400/50 text-teal-200' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}>
-                        <input type="checkbox" checked={isAssigned} onChange={() => toggleAssignmentMutation.mutate({ templateId: template.id, childId: child.id, assigned: isAssigned })} className="sr-only" />
-                        <span>{child.avatar_emoji}</span>
-                        <span>{child.name}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-
-                {isExpanded && (
-                  <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs text-white/60 mb-1">Category</label>
-                      <select value={template.category} onChange={(e) => updateFieldMutation.mutate({ id: template.id, field: 'category', value: e.target.value })} className="w-full text-sm">
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-white/60 mb-1">XP Value</label>
-                      <input type="number" min="10" value={template.xp_value} onChange={(e) => updateFieldMutation.mutate({ id: template.id, field: 'xp_value', value: parseInt(e.target.value) || 0 })} className="w-full text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-white/60 mb-1">Difficulty</label>
-                      <select value={template.difficulty_stars} onChange={(e) => updateFieldMutation.mutate({ id: template.id, field: 'difficulty_stars', value: parseInt(e.target.value) })} className="w-full text-sm">
-                        {[1,2,3,4,5].map((d) => <option key={d} value={d}>{'\u2B50'.repeat(d)}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </GlassCard>
-            )
-          })}
-        </div>
-      </div>
+      <section aria-labelledby="rewards-h">
+        <h2 id="rewards-h" className="mb-1 text-[19px]">Rewards</h2>
+        <p className="mb-3 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+          Locked each day until every must-do chore is shown. He asks, you say yes.
+        </p>
+        <ul className="space-y-2">
+          {(rewardData?.rewards ?? []).map((r) => (
+            <li key={r.id} className="row flex items-center gap-3 p-3">
+              <Lock className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-3)' }} aria-hidden />
+              <span className="flex-1 text-[16px]">{r.name}</span>
+              <button
+                type="button"
+                className="btn btn-quiet !px-3"
+                onClick={() => {
+                  if (window.confirm(`Remove “${r.name}”?`)) delReward.mutate(r.id)
+                }}
+                aria-label={`Remove ${r.name}`}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (rewardName.trim()) addReward.mutate(rewardName.trim())
+          }}
+        >
+          <label htmlFor="new-reward" className="sr-only">
+            New reward
+          </label>
+          <input id="new-reward" className="field" placeholder="30 minutes of games" value={rewardName} onChange={(e) => setRewardName(e.target.value)} maxLength={60} />
+          <button type="submit" className="btn btn-quiet" disabled={!rewardName.trim() || addReward.isPending}>
+            Add
+          </button>
+        </form>
+      </section>
     </div>
   )
 }

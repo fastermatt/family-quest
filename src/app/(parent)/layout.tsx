@@ -58,7 +58,7 @@ export default async function ParentLayout({
   return (
     <>
       <ParentNav />
-      <div className="max-w-6xl mx-auto px-4 py-6 pb-8">
+      <div className="mx-auto max-w-2xl px-4 py-6" style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}>
         {children}
       </div>
     </>

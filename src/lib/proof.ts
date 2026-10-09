@@ -1,0 +1,101 @@
+import { timeToMinutes } from './dates.ts'
+
+// How a chore is proven. The point of the app is that "done" means "shown",
+// not "claimed".
+export type ProofType = 'photo' | 'imessage_video' | 'check'
+
+export const PROOF_TYPES: ProofType[] = ['photo', 'imessage_video', 'check']
+
+export const PROOF_META: Record<
+  ProofType,
+  { icon: string; label: string; action: string; help: string }
+> = {
+  photo: {
+    icon: '📸',
+    label: 'Photo proof',
+    action: 'Take photo',
+    help: 'Take a photo that shows it is done.',
+  },
+  imessage_video: {
+    icon: '🎬',
+    label: 'Video by iMessage',
+    action: 'I sent the video',
+    help: 'Record a video, text it to Dad, then tap the button.',
+  },
+  check: {
+    icon: '✓',
+    label: 'Parent confirms',
+    action: 'I did it',
+    help: 'Tap when it is finished. A parent confirms.',
+  },
+}
+
+interface ProofSource {
+  proof_type?: string | null
+  photo_required?: boolean | null
+}
+
+/**
+ * Works both before and after the proof_type column exists, so the app keeps
+ * running while the migration is pending.
+ */
+export function proofTypeOf(t: ProofSource | null | undefined): ProofType {
+  if (t?.proof_type && (PROOF_TYPES as string[]).includes(t.proof_type)) {
+    return t.proof_type as ProofType
+  }
+  return t?.photo_required ? 'photo' : 'check'
+}
+
+export interface UnlockTask {
+  id: string
+  status: string
+  template_id?: string | null
+  task_template?: ProofSource & { required?: boolean | null }
+}
+
+/**
+ * Does this chore count toward unlocking rewards?
+ * - approved always counts.
+ * - a submitted photo counts straight away (the evidence exists; a parent can
+ *   still reject it, which re-locks the reward).
+ * - everything else needs a parent to confirm first.
+ */
+export function countsTowardUnlock(task: UnlockTask): boolean {
+  if (task.task_template?.required === false) return true
+  if (task.status === 'approved') return true
+  if (task.status === 'submitted') return proofTypeOf(task.task_template) === 'photo'
+  return false
+}
+
+interface PrivilegeLike {
+  gating_mode: string
+  required_template_ids?: string[] | null
+}
+
+export function privilegeUnlocked(priv: PrivilegeLike, tasks: UnlockTask[]): boolean {
+  if (priv.gating_mode === 'always_available') return true
+
+  // No chores today means something is wrong (generation failed). Stay locked
+  // rather than hand out rewards for free.
+  const required = tasks.filter((t) => t.task_template?.required !== false)
+  if (required.length === 0) return false
+
+  if (priv.gating_mode === 'all_tasks') {
+    return required.every(countsTowardUnlock)
+  }
+  if (priv.gating_mode === 'specific_tasks') {
+    const ids = priv.required_template_ids ?? []
+    if (ids.length === 0) return false
+    return ids.every((id) => {
+      const match = tasks.find((t) => t.template_id === id)
+      return match ? countsTowardUnlock(match) : false
+    })
+  }
+  return false
+}
+
+/** Has the cutoff passed for a chore that is still open? */
+export function isPastCutoff(cutoffTime: string | null | undefined, nowMinutes: number): boolean {
+  if (!cutoffTime) return false
+  return nowMinutes > timeToMinutes(cutoffTime)
+}

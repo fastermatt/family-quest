@@ -1,6 +1,7 @@
 export type Role = 'parent' | 'child'
 export type RecurrenceType = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'once'
-export type TaskStatus = 'pending' | 'submitted' | 'approved' | 'rejected'
+export type TaskStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'missed'
+export type ProofType = 'photo' | 'imessage_video' | 'check'
 export type GatingMode = 'all_tasks' | 'specific_tasks' | 'always_available'
 export type RewardType = 'money' | 'experience' | 'privilege' | 'item' | 'xp'
 export type BonusType = 'open_bounty' | 'assigned'
@@ -44,6 +45,9 @@ export interface TaskTemplate {
   recurrence_days: number[]
   reset_hour: number
   photo_required: boolean
+  proof_type?: ProofType
+  required?: boolean
+  cutoff_time?: string | null
   xp_value: number
   difficulty_stars: number
   time_of_day: TimeOfDay

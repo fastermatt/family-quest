@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { proofTypeOf } from '@/lib/proof'
 
 // Resolve the calling profile (same pattern as /api/tasks)
 async function resolveProfileId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
   // Verify this task belongs to the calling profile
   const { data: task, error: taskError } = await supabaseAdmin
     .from('task_instances')
-    .select('id, assigned_to, status')
+    .select('id, assigned_to, status, task_template:task_templates(*)')
     .eq('id', taskId)
     .eq('assigned_to', profileId)
     .single()
@@ -89,20 +90,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 })
   }
 
-  if (task.status !== 'pending') {
+  // A rejected chore can be redone; anything else already in review cannot.
+  if (task.status !== 'pending' && task.status !== 'rejected') {
     return NextResponse.json({ error: 'Task already submitted' }, { status: 400 })
+  }
+
+  const template = Array.isArray(task.task_template) ? task.task_template[0] : task.task_template
+  const proofType = proofTypeOf(template)
+
+  // The server decides what counts as proof, not the browser.
+  const hasPhoto = !!photo && photo.size > 0
+  if (proofType === 'photo' && !hasPhoto) {
+    return NextResponse.json({ error: 'This chore needs a photo' }, { status: 400 })
   }
 
   let photoUrl: string | null = null
 
   // Upload photo if provided
-  if (photo && photo.size > 0) {
+  if (hasPhoto && photo) {
     const MAX_SIZE = 5 * 1024 * 1024
     if (photo.size > MAX_SIZE) {
       return NextResponse.json({ error: 'Photo must be under 5MB' }, { status: 400 })
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
     if (!allowedTypes.includes(photo.type)) {
       return NextResponse.json({ error: 'Invalid image type' }, { status: 400 })
     }
@@ -137,6 +148,9 @@ export async function POST(req: NextRequest) {
   const updateData: Record<string, any> = {
     status: 'submitted',
     submitted_at: new Date().toISOString(),
+    // Clear any earlier rejection so the reviewer sees a clean resubmission.
+    reviewed_at: null,
+    review_note: null,
   }
 
   if (photoUrl) {

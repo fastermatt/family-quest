@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { BottomNav } from '@/components/bottom-nav'
 import { ChildViewBanner } from '@/components/child-view-banner'
 import Image from 'next/image'
 
@@ -51,11 +50,10 @@ export default async function ChildLayout({
           <ChildViewBanner childName={childProfile.name} childEmoji={childProfile.avatar_emoji} />
           <div
             className="max-w-md mx-auto px-4 py-6"
-            style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}
+            style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
           >
             {children}
           </div>
-          <BottomNav />
         </>
       )
     }
@@ -76,11 +74,10 @@ export default async function ChildLayout({
           <ChildHeader />
           <div
             className="max-w-md mx-auto px-4 py-6"
-            style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}
+            style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
           >
             {children}
           </div>
-          <BottomNav />
         </>
       )
     }
@@ -112,11 +109,10 @@ export default async function ChildLayout({
       <ChildHeader />
       <div
         className="max-w-md mx-auto px-4 py-6"
-        style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}
+        style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
       >
         {children}
       </div>
-      <BottomNav />
     </>
   )
 }

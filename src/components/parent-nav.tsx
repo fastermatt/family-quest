@@ -1,98 +1,59 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
+import { ClipboardCheck, ListChecks, LogOut, Users } from 'lucide-react'
+
+const LINKS = [
+  { href: '/dashboard', label: 'Today', Icon: ClipboardCheck, match: ['/dashboard', '/review'] },
+  { href: '/tasks', label: 'Chores', Icon: ListChecks, match: ['/tasks'] },
+  { href: '/people', label: 'Family', Icon: Users, match: ['/people'] },
+]
 
 export function ParentNav() {
   const pathname = usePathname()
-  const router = useRouter()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [signingOut, setSigningOut] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
-  const links = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/tasks', label: 'Tasks' },
-    { href: '/privileges', label: 'Privileges' },
-    { href: '/bonus', label: 'Bonus' },
-    { href: '/review', label: 'Review' },
-  ]
-
-  const handleSignOut = async () => {
-    setSigningOut(true)
-    try {
-      const supabase = createClient()
-      await supabase.auth.signOut()
-      router.push('/login')
-    } finally {
-      setSigningOut(false)
-    }
+  const signOut = async () => {
+    setLeaving(true)
+    await fetch('/api/logout', { method: 'POST' }).catch(() => {})
+    window.location.href = '/family-login'
   }
 
   return (
-    <nav className="glass-card m-4 p-4 flex items-center justify-between">
-      <Link href="/dashboard" className="flex items-center gap-2">
-        <img src="/logo.svg" alt="Home Base" className="h-10 w-10" />
-        <span className="text-xl font-bold gradient-text hidden sm:inline">Home Base</span>
-      </Link>
-
-      {/* Desktop Nav */}
-      <div className="hidden md:flex items-center gap-2">
-        {links.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              pathname === link.href
-                ? 'bg-teal-600/30 text-teal-300'
-                : 'text-white/70 hover:text-white'
-            )}
-          >
-            {link.label}
-          </Link>
-        ))}
-      </div>
-
-      {/* Sign Out Button */}
-      <button
-        onClick={handleSignOut}
-        disabled={signingOut}
-        className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 border border-red-400/50 text-red-300 hover:bg-red-500/30 transition-all disabled:opacity-50"
-      >
-        {signingOut ? 'Signing out...' : 'Sign Out'}
-      </button>
-
-      {/* Mobile Menu Toggle */}
-      <button
-        onClick={() => setMenuOpen(!menuOpen)}
-        className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-all"
-      >
-        ☰
-      </button>
-
-      {/* Mobile Menu */}
-      {menuOpen && (
-        <div className="absolute top-20 left-0 right-0 glass-card m-4 p-4 space-y-2 md:hidden">
-          {links.map((link) => (
+    <header
+      className="sticky top-0 z-40 border-b"
+      style={{ background: 'rgba(2,6,23,0.92)', borderColor: 'var(--line)', paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
+      <nav className="mx-auto flex h-14 max-w-2xl items-center gap-1 px-2" aria-label="Main">
+        {LINKS.map(({ href, label, Icon, match }) => {
+          const active = match.includes(pathname)
+          return (
             <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMenuOpen(false)}
-              className={cn(
-                'block px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                pathname === link.href
-                  ? 'bg-teal-600/30 text-teal-300'
-                  : 'text-white/70 hover:text-white'
-              )}
+              key={href}
+              href={href}
+              aria-current={active ? 'page' : undefined}
+              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-[10px] text-[15px] font-semibold transition-colors duration-150 sm:flex-none sm:px-4"
+              style={{ color: active ? 'var(--accent)' : 'var(--ink-2)', background: active ? 'rgba(45,212,191,0.12)' : 'transparent' }}
             >
-              {link.label}
+              <Icon className="h-[18px] w-[18px]" aria-hidden />
+              {label}
             </Link>
-          ))}
-        </div>
-      )}
-    </nav>
+          )
+        })}
+        <button
+          type="button"
+          onClick={signOut}
+          disabled={leaving}
+          className="ml-auto flex h-11 w-11 items-center justify-center rounded-[10px] transition-colors duration-150 hover:bg-white/5"
+          style={{ color: 'var(--ink-3)' }}
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          <LogOut className="h-[18px] w-[18px]" aria-hidden />
+        </button>
+      </nav>
+    </header>
   )
 }

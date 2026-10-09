@@ -33,10 +33,13 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/auth/') ||
     pathname === '/family/setup' ||
     pathname.startsWith('/api/join/') ||
+    pathname.startsWith('/api/cron/') || // each cron route checks its own Bearer secret
     pathname === '/api/pin-login' ||
+    pathname === '/setup-pin' ||
+    pathname === '/api/setup-pin' ||
+    pathname === '/api/logout' ||
     pathname === '/api/family-members' ||
-    pathname === '/api/set-child-token' ||
-    pathname === '/api/test-suite'
+    pathname === '/api/set-child-token'
 
   if (!user && !isPublic) {
     // Allow access if user has a persistent profile_token cookie
