@@ -28,6 +28,8 @@ export default function FamilyLoginPage() {
   const [needsFamilyCode, setNeedsFamilyCode] = useState(false)
   const [familyCode, setFamilyCode] = useState('')
   const [familyCodeError, setFamilyCodeError] = useState('')
+  // Hold the picker until we know nobody is already signed in on this device.
+  const [checking, setChecking] = useState(true)
 
   // Already signed in on this device? Go straight to the right screen.
   useEffect(() => {
@@ -35,8 +37,9 @@ export default function FamilyLoginPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => {
         if (p?.role) router.replace(p.role === 'child' ? '/home' : '/dashboard')
+        else setChecking(false)
       })
-      .catch(() => {})
+      .catch(() => setChecking(false))
   }, [router])
 
   useEffect(() => {
@@ -152,7 +155,7 @@ export default function FamilyLoginPage() {
         {/* Pick member screen */}
         {!needsFamilyCode && screen === 'pick' && (
           <div className="space-y-6">
-            {loading ? (
+            {loading || checking ? (
               <div className="text-center text-white/40 py-12">Loading...</div>
             ) : (
               <>

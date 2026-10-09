@@ -48,7 +48,7 @@ interface Overview {
   requests: { id: string; childId: string; reward: string }[]
 }
 
-const QUICK_NOTES = ['Not finished yet', 'Photo does not show it', 'Do it the right way']
+const QUICK_NOTES = ['Not finished yet', 'Photo does not show it', 'Show the finished result']
 
 async function post(url: string, body: unknown) {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -114,12 +114,20 @@ export function ParentToday() {
         .concat(qc.getQueryData<Overview>(['parent-overview'])?.olderWaiting ?? [])
         .filter((t) => t.status === 'submitted' && t.hasPhoto && proofTypeOf(t.template) === 'photo')
         .map((t) => t.id)
+      let ok = 0
       for (const id of ids) {
         // One at a time so points and streaks add up in order; skip any already reviewed.
-        await post(`/api/parent/review/${id}`, { action: 'approve' }).catch((e) => {
-          if (!(e instanceof Error) || !/Already reviewed/.test(e.message)) throw e
-        })
+        try {
+          await post(`/api/parent/review/${id}`, { action: 'approve' })
+          ok++
+        } catch (e) {
+          if (e instanceof Error && /Already reviewed/.test(e.message)) ok++
+        }
       }
+      return { ok, total: ids.length }
+    },
+    onSuccess: ({ ok, total }) => {
+      if (ok < total) setError(`Approved ${ok} of ${total}. ${total - ok} did not go through, try those one at a time.`)
     },
     onMutate: () => setError(null),
     onError: (e) => setError(e instanceof Error ? e.message : 'Some approvals did not save.'),
@@ -292,7 +300,7 @@ export function ParentToday() {
                         className="field min-h-[80px] py-2"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        placeholder="He will see this note."
+                        placeholder="Be specific: take a wider photo showing the whole worksheet"
                         maxLength={300}
                       />
                       <div className="flex gap-2">

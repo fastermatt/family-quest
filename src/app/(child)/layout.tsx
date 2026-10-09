@@ -5,14 +5,16 @@ import { cookies } from 'next/headers'
 import { ChildViewBanner } from '@/components/child-view-banner'
 import { ReportProblem } from '@/components/report-problem'
 import { Brand } from '@/components/brand'
+import { SwitchPerson } from '@/components/switch-person'
 
-function ChildHeader() {
+function ChildHeader({ canSwitch = false }: { canSwitch?: boolean }) {
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-40 flex items-center justify-center px-4 bg-[#020617]/80 backdrop-blur-md border-b border-white/10"
+      className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 bg-[#020617]/80 backdrop-blur-md border-b border-white/10"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(56px + env(safe-area-inset-top, 0px))' }}
     >
       <Brand />
+      {canSwitch ? <SwitchPerson /> : <span />}
     </header>
   )
 }
@@ -75,7 +77,7 @@ export default async function ChildLayout({
     if (tokenProfile?.role === 'child') {
       return (
         <>
-          <ChildHeader />
+          <ChildHeader canSwitch />
           <div
             className="max-w-md mx-auto px-4 py-6"
             style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
@@ -113,7 +115,7 @@ export default async function ChildLayout({
 
   return (
     <>
-      <ChildHeader />
+      <ChildHeader canSwitch />
       <div
         className="max-w-md mx-auto px-4 py-6"
         style={{ paddingTop: HEADER_OFFSET, paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}

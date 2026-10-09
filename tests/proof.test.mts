@@ -141,3 +141,74 @@ test('training log validation', () => {
   assert.equal(cleanTraining({ rest_day: true }).values?.rest_day, true)
   assert.equal(winPromptFor('2026-10-09'), winPromptFor('2026-10-09'))
 })
+
+import { groupChores, progressCounts, progressLine, isPrivateHost, actionLabel } from '../src/lib/kid-view.ts'
+
+const mk = (id: string, status: string, tt: Record<string, unknown> = {}) => ({
+  id,
+  status,
+  task_template: { proof_type: 'check', required: true, ...tt },
+})
+
+test('groupChores splits fix / next / waiting / finished', () => {
+  const g = groupChores(
+    [
+      mk('a', 'rejected'),
+      mk('b', 'pending'),
+      mk('c', 'submitted'),
+      mk('d', 'submitted', { proof_type: 'photo' }),
+      mk('e', 'approved'),
+      mk('f', 'missed'),
+    ],
+    600
+  )
+  assert.deepEqual(g.fix.map((t) => t.id), ['a'])
+  assert.deepEqual(g.next.map((t) => t.id).sort(), ['b', 'f'])
+  assert.deepEqual(g.waiting.map((t) => t.id), ['c'])
+  assert.deepEqual(g.finished.map((t) => t.id).sort(), ['d', 'e'])
+})
+
+test('Do next sorts late first, then cutoff, then time of day', () => {
+  const g = groupChores(
+    [
+      mk('none-eve', 'pending', { time_of_day: 'evening' }),
+      mk('none-morn', 'pending', { time_of_day: 'morning' }),
+      mk('cut-1700', 'pending', { cutoff_time: '17:00', time_of_day: 'afternoon' }),
+      mk('late-0800', 'pending', { cutoff_time: '08:00', time_of_day: 'morning' }),
+      mk('cut-1200', 'pending', { cutoff_time: '12:00', time_of_day: 'morning' }),
+    ],
+    9 * 60
+  )
+  assert.deepEqual(g.next.map((t) => t.id), ['late-0800', 'cut-1200', 'cut-1700', 'none-morn', 'none-eve'])
+})
+
+test('progressCounts ignores extras and separates waiting from to do', () => {
+  const p = progressCounts([
+    mk('1', 'pending'),
+    mk('2', 'rejected'),
+    mk('3', 'submitted'),
+    mk('4', 'submitted', { proof_type: 'photo' }),
+    mk('5', 'pending', { required: false }),
+  ])
+  assert.deepEqual(p, { total: 4, toDo: 2, waiting: 1, done: 1, allDone: false })
+  assert.equal(progressLine(p), '2 to do · 1 waiting on a parent')
+  assert.equal(progressLine({ ...p, toDo: 0 }), 'Your part is done. Waiting for a parent.')
+  assert.equal(progressLine({ ...p, toDo: 0, waiting: 0, done: 4, allDone: true }), 'All chores shown. Rewards are open.')
+  assert.equal(progressLine({ ...p, waiting: 0 }), '2 to do')
+})
+
+test('isPrivateHost flags home-network links only', () => {
+  for (const u of ['http://192.168.1.5/x', 'http://10.0.0.2', 'http://172.16.4.1', 'http://172.31.0.1', 'http://mac.local:3000', 'http://localhost:3000']) {
+    assert.equal(isPrivateHost(u), true, u)
+  }
+  for (const u of ['https://khanacademy.org', 'http://172.32.0.1', 'http://172.15.0.1', 'http://8.8.8.8', 'nonsense', null]) {
+    assert.equal(isPrivateHost(u), false, String(u))
+  }
+})
+
+test('actionLabel matches the visible action', () => {
+  assert.equal(actionLabel('photo', 'rejected'), 'Redo')
+  assert.equal(actionLabel('photo', 'pending'), 'Take photo')
+  assert.equal(actionLabel('imessage_video', 'pending'), 'Sent it')
+  assert.equal(actionLabel('check', 'pending'), 'Done')
+})

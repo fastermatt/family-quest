@@ -2,8 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Check, Dumbbell, Loader2, Pencil, Trophy } from 'lucide-react'
+import { Check, ChevronUp, Dumbbell, Loader2, Pencil, Trophy } from 'lucide-react'
 import { FloatChip, IconTile } from './celebrate'
+import { CollapsedRow } from './collapsed-row'
 import { haptic, playChime, primeAudio } from './sound'
 import { SKILLS } from '@/lib/training'
 
@@ -27,7 +28,7 @@ interface Training {
 const KEY = ['child-training']
 
 /** Grey's daily calisthenics log. */
-export function TrainingCard({ onPoints }: { onPoints?: () => void }) {
+export function TrainingCard({ onPoints, collapsible = true }: { onPoints?: () => void; collapsible?: boolean }) {
   const qc = useQueryClient()
   const { data } = useQuery({
     queryKey: KEY,
@@ -45,6 +46,7 @@ export function TrainingCard({ onPoints }: { onPoints?: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [chip, setChip] = useState<string | null>(null)
   const [fresh, setFresh] = useState(false)
+  const [open, setOpen] = useState(false)
 
   const save = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
@@ -85,8 +87,24 @@ export function TrainingCard({ onPoints }: { onPoints?: () => void }) {
   }
   const toggle = (s: string) => setSkills((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]))
 
+  if (collapsible && !open) {
+    return (
+      <CollapsedRow
+        icon={<Dumbbell className="h-5 w-5" aria-hidden />}
+        title="Calisthenics log"
+        badge={`+${data.xp}`}
+        done={!!data.today}
+        open={false}
+        onToggle={() => setOpen(true)}
+        controls="training-card"
+      >
+        {chip && <FloatChip text={chip} tone="ok" />}
+      </CollapsedRow>
+    )
+  }
+
   return (
-    <section aria-label="Calisthenics log" className="row relative p-4" style={logged ? { background: 'rgba(52,211,153,0.06)' } : undefined}>
+    <section id="training-card" aria-label="Calisthenics log" className="row relative p-4" style={logged ? { background: 'rgba(52,211,153,0.06)' } : undefined}>
       <div className="flex items-start gap-3">
         <IconTile tone={logged ? 'ok' : 'accent'} fresh={fresh}>
           {logged ? <Check className="h-5 w-5" aria-hidden /> : <Dumbbell className="h-5 w-5" aria-hidden />}
@@ -219,6 +237,12 @@ export function TrainingCard({ onPoints }: { onPoints?: () => void }) {
           )}
         </div>
       </div>
+      {collapsible && (
+        <button type="button" className="btn btn-quiet mt-3 !px-3" onClick={() => setOpen(false)} aria-expanded>
+          <ChevronUp className="h-4 w-4" aria-hidden />
+          Hide
+        </button>
+      )}
       {chip && <FloatChip text={chip} tone="ok" />}
     </section>
   )

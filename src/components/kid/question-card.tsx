@@ -2,8 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Check, Lightbulb, Loader2, Pencil } from 'lucide-react'
+import { Check, ChevronUp, Lightbulb, Loader2, Pencil } from 'lucide-react'
 import { FloatChip, IconTile } from './celebrate'
+import { CollapsedRow } from './collapsed-row'
 import { haptic, playChime, primeAudio } from './sound'
 
 interface Reflection {
@@ -17,7 +18,7 @@ const KEY = ['child-reflection']
 const MIN = 15
 
 /** Grey's question of the day. Answering once a day pays points. */
-export function QuestionCard({ onPoints }: { onPoints?: () => void }) {
+export function QuestionCard({ onPoints, collapsible = true }: { onPoints?: () => void; collapsible?: boolean }) {
   const qc = useQueryClient()
   const { data } = useQuery({
     queryKey: KEY,
@@ -33,6 +34,7 @@ export function QuestionCard({ onPoints }: { onPoints?: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [chip, setChip] = useState<string | null>(null)
   const [fresh, setFresh] = useState(false)
+  const [open, setOpen] = useState(false)
 
   const save = useMutation({
     mutationFn: async (answer: string) => {
@@ -66,8 +68,24 @@ export function QuestionCard({ onPoints }: { onPoints?: () => void }) {
   const answered = !!data.answer && !editing
   const len = draft.trim().length
 
+  if (collapsible && !open) {
+    return (
+      <CollapsedRow
+        icon={<Lightbulb className="h-5 w-5" aria-hidden />}
+        title="Question of the day"
+        badge={`+${data.xp}`}
+        done={!!data.answer}
+        open={false}
+        onToggle={() => setOpen(true)}
+        controls="question-card"
+      >
+        {chip && <FloatChip text={chip} tone="ok" />}
+      </CollapsedRow>
+    )
+  }
+
   return (
-    <section aria-label="Question of the day" className="row relative p-4" style={answered ? { background: 'rgba(52,211,153,0.06)' } : undefined}>
+    <section id="question-card" aria-label="Question of the day" className="row relative p-4" style={answered ? { background: 'rgba(52,211,153,0.06)' } : undefined}>
       <div className="flex items-start gap-3">
         <IconTile tone={answered ? 'ok' : 'accent'} fresh={fresh}>
           {answered ? <Check className="h-5 w-5" aria-hidden /> : <Lightbulb className="h-5 w-5" aria-hidden />}
@@ -137,6 +155,12 @@ export function QuestionCard({ onPoints }: { onPoints?: () => void }) {
           )}
         </div>
       </div>
+      {collapsible && (
+        <button type="button" className="btn btn-quiet mt-3 !px-3" onClick={() => setOpen(false)} aria-expanded>
+          <ChevronUp className="h-4 w-4" aria-hidden />
+          Hide
+        </button>
+      )}
       {chip && <FloatChip text={chip} tone="ok" />}
     </section>
   )

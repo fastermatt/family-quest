@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Camera, Check, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
+import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
 import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
 import { PointsStrip } from '@/components/kid/points-strip'
 import { QuestionCard } from '@/components/kid/question-card'
@@ -10,7 +10,8 @@ import { TrainingCard } from '@/components/kid/training-card'
 import { haptic, playChime, primeAudio, useMuted } from '@/components/kid/sound'
 import { ProofIcon, StatusPill, type StatusKey } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
-import { PROOF_META, countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
+import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
+import { actionLabel, groupChores, isPrivateHost, progressCounts, progressLine } from '@/lib/kid-view'
 import { shrinkPhoto } from '@/lib/image'
 
 interface Chore {
@@ -25,6 +26,7 @@ interface Chore {
     photo_required?: boolean
     cutoff_time?: string | null
     required?: boolean
+    time_of_day?: string | null
     xp_value: number
     link_url?: string | null
   }
@@ -63,72 +65,222 @@ function statusOf(c: Chore, nowMinutes: number): StatusKey {
 
 const TODAY_KEY = ['child-today']
 
-// Mark one chore as sent, and open rewards if that was the last one needed.
-function withSubmitted(d: Today, id: string): Today {
-  const tasks = d.tasks.map((t) => (t.id === id ? { ...t, status: 'submitted' } : t))
-  const req = tasks.filter((t) => t.task_template.required !== false)
-  const all = req.length > 0 && req.every(countsTowardUnlock)
-  return { ...d, tasks, rewards: all ? d.rewards.map((r) => (r.unlocked ? r : { ...r, unlocked: true })) : d.rewards }
-}
-
 function xpLabel(c: Chore) {
   const xp = c.task_template.xp_value
   return proofTypeOf(c.task_template) === 'photo' ? `+${xp}` : `+${xp} when checked`
 }
 
+interface RowProps {
+  c: Chore
+  nowMinutes: number
+  fresh: boolean
+  chip?: string
+  sending: boolean
+  locked: boolean // some other chore is being sent
+  error?: string
+  hasFile: boolean
+  onStart: (c: Chore) => void
+  onRetry: (c: Chore) => void
+  onNewPhoto: (c: Chore) => void
+  rowRef: (el: HTMLLIElement | null) => void
+  actionRef: (el: HTMLButtonElement | null) => void
+}
+
+function ChoreRow({ c, nowMinutes, fresh, chip, sending, locked, error, hasFile, onStart, onRetry, onNewPhoto, rowRef, actionRef }: RowProps) {
+  const type = proofTypeOf(c.task_template)
+  const st = statusOf(c, nowMinutes)
+  const open = c.status === 'pending' || c.status === 'rejected' || c.status === 'missed'
+  const cutoff = c.task_template.cutoff_time
+  const link = c.task_template.link_url
+  const extra = c.task_template.required === false
+  const homeOnly = isPrivateHost(link)
+  const isRedo = c.status === 'rejected'
+  const hasLink = open && !!link && c.status !== 'missed'
+  const canAct = open && c.status !== 'missed'
+  const showRetry = !!error && type === 'photo' && hasFile
+  const label = hasLink && type === 'photo' ? 'Show finished work' : actionLabel(type, c.status)
+  const name = c.task_template.name
+
+  const proofBtn = sending ? (
+    <button type="button" className="btn btn-primary shrink-0" disabled aria-label={`Sending: ${name}`}>
+      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      Sending…
+    </button>
+  ) : canAct && !showRetry ? (
+    <button
+      ref={actionRef}
+      type="button"
+      className={`btn shrink-0 ${hasLink ? 'btn-quiet' : 'btn-primary'}`}
+      onClick={() => onStart(c)}
+      disabled={locked}
+      aria-label={`${label}: ${name}`}
+    >
+      {type === 'photo' ? <Camera className="h-4 w-4" aria-hidden /> : type === 'imessage_video' ? <MessageSquare className="h-4 w-4" aria-hidden /> : null}
+      {label}
+    </button>
+  ) : null
+
+  return (
+    <li
+      ref={rowRef}
+      className="row relative p-3"
+      style={isRedo ? { borderColor: 'rgba(251,191,36,0.45)' } : st === 'approved' || st === 'shown' ? { background: 'rgba(52,211,153,0.06)' } : undefined}
+    >
+      <div className="flex items-center gap-3">
+        <IconTile tone={st === 'approved' || st === 'shown' ? 'ok' : st === 'submitted' ? 'wait' : 'idle'} fresh={fresh}>
+          {st === 'approved' || st === 'shown' || st === 'submitted' ? <Check className="h-5 w-5" aria-hidden /> : <ProofIcon type={type} />}
+        </IconTile>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-x-2 text-[16px] font-semibold leading-snug">
+            {name}
+            {extra && (
+              <span className="rounded-full border px-2 text-[12px] font-semibold" style={{ borderColor: 'var(--line)', color: 'var(--ink-3)' }}>
+                Extra
+              </span>
+            )}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px]" style={{ color: 'var(--ink-3)' }}>
+            {st === 'submitted' ? (
+              <span className="font-semibold" style={{ color: 'var(--wait)' }}>
+                Waiting for Mom or Dad to check
+              </span>
+            ) : (
+              <StatusPill status={st} label={st === 'late' && cutoff ? `Late, was due ${formatClock(cutoff)}` : undefined} />
+            )}
+            {st === 'pending' && cutoff && <span>Due by {formatClock(cutoff)}</span>}
+          </p>
+        </div>
+        {!hasLink && proofBtn}
+      </div>
+      {chip && <FloatChip text={chip} tone={type === 'photo' ? 'ok' : 'wait'} />}
+
+      {isRedo && (
+        <p className="mt-2 rounded-[10px] px-3 py-2 text-[15px] font-semibold" style={{ color: 'var(--redo)', background: 'rgba(251,191,36,0.1)' }}>
+          {c.reviewNote ? <>“{c.reviewNote}”</> : 'Try it again.'}
+        </p>
+      )}
+
+      {hasLink && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-[52px]">
+          <a href={link!} target="_blank" rel="noopener noreferrer" className="btn btn-primary shrink-0">
+            <ExternalLink className="h-4 w-4" aria-hidden />
+            Open lesson
+          </a>
+          {proofBtn}
+          {homeOnly && (
+            <span className="basis-full text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              Home Wi-Fi only
+            </span>
+          )}
+        </div>
+      )}
+
+      {canAct && type === 'photo' && c.prompt && (
+        <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          Photo: {c.prompt.replace(/^\S+\s/, '')}
+        </p>
+      )}
+      {canAct && type === 'imessage_video' && (
+        <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          Record a video, text it to Dad or Mom, then tap Sent it.
+        </p>
+      )}
+
+      {error && (
+        <div className="mt-2 pl-[52px]">
+          <p className="flex items-start gap-1.5 text-[14px]" role="alert" style={{ color: 'var(--miss)' }}>
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>{error}</span>
+          </p>
+          {showRetry && !sending && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" ref={actionRef} className="btn btn-primary" onClick={() => onRetry(c)} disabled={locked} aria-label={`Try again: ${name}`}>
+                <RotateCcw className="h-4 w-4" aria-hidden />
+                Try again
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={() => onNewPhoto(c)} disabled={locked} aria-label={`Take a new photo: ${name}`}>
+                <Camera className="h-4 w-4" aria-hidden />
+                Take a new photo
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
 export default function ChildToday() {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
+  const rowEls = useRef(new Map<string, HTMLLIElement>())
+  const actionEls = useRef(new Map<string, HTMLButtonElement>())
   const [photoFor, setPhotoFor] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [sending, setSending] = useState<Record<string, true>>({})
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  const [files, setFiles] = useState<Record<string, File>>({}) // photos that failed to send, for retry
   const [error, setError] = useState<string | null>(null)
   const [fresh, setFresh] = useState<Record<string, true>>({}) // chores finished this session
   const [chips, setChips] = useState<Record<string, string>>({})
   const [announce, setAnnounce] = useState('')
   const [burst, setBurst] = useState(false)
   const [unlockFx, setUnlockFx] = useState(false)
+  const [showFinished, setShowFinished] = useState(false)
   const prevAll = useRef<boolean | null>(null)
   const reduced = useReducedMotion()
   const [muted, toggleMute] = useMuted()
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: TODAY_KEY,
     queryFn: () => getJson<Today>('/api/child/today'),
     refetchInterval: 20_000, // parent approvals show up quickly
     refetchOnWindowFocus: true,
   })
 
+  const celebrate = (c: Chore) => {
+    const xp = c.task_template.xp_value
+    setFresh((f) => ({ ...f, [c.id]: true }))
+    if (xp > 0) {
+      setChips((m) => ({ ...m, [c.id]: xpLabel(c) }))
+      // The chip has played by then; take it out of the page.
+      window.setTimeout(() => setChips(({ [c.id]: _gone, ...rest }) => rest), 1600)
+    }
+    setAnnounce(xp > 0 ? `${c.task_template.name} shown. ${xpLabel(c)}` : `${c.task_template.name} shown.`)
+    haptic()
+    playChime('done')
+  }
+
+  // Nothing is celebrated or changed until the server has saved it.
   const submit = useMutation({
-    mutationFn: async ({ id, file }: { id: string; file?: File }) => {
+    mutationFn: async ({ chore, file }: { chore: Chore; file?: File }) => {
       const form = new FormData()
-      form.append('taskId', id)
-      const chore = data?.tasks.find((t) => t.id === id)
-      if (chore?.prompt) form.append('photoChallengePrompt', chore.prompt)
+      form.append('taskId', chore.id)
+      if (chore.prompt) form.append('photoChallengePrompt', chore.prompt)
       if (file) form.append('photo', await shrinkPhoto(file))
       const res = await fetch('/api/submit-task', { method: 'POST', body: form })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error || 'That did not go through. Try again.')
     },
-    onMutate: async ({ id }) => {
-      setBusy(id)
+    onMutate: ({ chore }) => {
+      setSending((m) => ({ ...m, [chore.id]: true }))
+      setRowErrors(({ [chore.id]: _gone, ...rest }) => rest)
       setError(null)
-      await qc.cancelQueries({ queryKey: TODAY_KEY })
-      const prev = qc.getQueryData<Today>(TODAY_KEY)
-      if (prev) qc.setQueryData<Today>(TODAY_KEY, withSubmitted(prev, id))
-      return { prev }
     },
-    onError: (e, { id }, ctx) => {
-      if (ctx?.prev) qc.setQueryData(TODAY_KEY, ctx.prev)
-      setFresh(({ [id]: _gone, ...rest }) => rest)
-      setChips(({ [id]: _gone, ...rest }) => rest)
+    onSuccess: (_r, { chore }) => {
+      setFiles(({ [chore.id]: _gone, ...rest }) => rest)
+      celebrate(chore)
+      // Returned so "Sending…" stays until the refreshed list lands (no flash back).
+      return qc.invalidateQueries({ queryKey: TODAY_KEY })
+    },
+    onError: (e, { chore }) => {
       const msg = e instanceof Error ? e.message : ''
       const friendly = /not found/i.test(msg) ? 'That chore was changed by a parent. Your list just refreshed.' : msg || 'That did not go through. Try again.'
-      setAnnounce(friendly)
-      setError(friendly)
-    },
-    onSettled: () => {
-      setBusy(null)
+      setRowErrors((m) => ({ ...m, [chore.id]: friendly }))
+      setAnnounce(`${chore.task_template.name}: ${friendly}`)
       qc.invalidateQueries({ queryKey: TODAY_KEY })
+    },
+    onSettled: (_d, _e, { chore }) => {
+      setSending(({ [chore.id]: _gone, ...rest }) => rest)
     },
   })
 
@@ -142,10 +294,10 @@ export default function ChildToday() {
     onSettled: () => qc.invalidateQueries({ queryKey: TODAY_KEY }),
   })
 
-  // Derived values the all-done effect needs (hooks must run before early returns).
+  // Derived from server data only (nothing optimistic feeds this).
   const tasksNow = data?.tasks ?? []
-  const requiredNow = tasksNow.filter((t) => t.task_template.required !== false)
-  const allDoneNow = requiredNow.length > 0 && requiredNow.every(countsTowardUnlock)
+  const prog = progressCounts(tasksNow)
+  const allDoneNow = prog.allDone
 
   // Fires only on a not-all -> all transition seen this session, once per day.
   useEffect(() => {
@@ -161,38 +313,34 @@ export default function ChildToday() {
     window.setTimeout(() => setBurst(false), 2000)
   }, [allDoneNow, data])
 
-  const celebrate = (c: Chore) => {
-    const xp = c.task_template.xp_value
-    setFresh((f) => ({ ...f, [c.id]: true }))
-    if (xp > 0) {
-      setChips((m) => ({ ...m, [c.id]: xpLabel(c) }))
-      // The chip has played by then; take it out of the page.
-      window.setTimeout(() => setChips(({ [c.id]: _gone, ...rest }) => rest), 1600)
-    }
-    setAnnounce(xp > 0 ? `${c.task_template.name} shown. ${xpLabel(c)}` : `${c.task_template.name} shown.`)
-    haptic()
-    playChime('done')
+  const submitChore = (c: Chore, file?: File) => {
+    primeAudio() // unlocks sound while the tap is still fresh
+    if (file) setFiles((m) => ({ ...m, [c.id]: file }))
+    submit.mutate({ chore: c, file })
+  }
+
+  const newPhoto = (c: Chore) => {
+    primeAudio()
+    setPhotoFor(c.id)
+    fileRef.current?.click()
   }
 
   const start = (c: Chore) => {
-    primeAudio() // unlocks sound while the tap is still fresh
-    if (proofTypeOf(c.task_template) === 'photo') {
-      setPhotoFor(c.id)
-      fileRef.current?.click()
-    } else {
-      celebrate(c)
-      submit.mutate({ id: c.id })
-    }
+    if (proofTypeOf(c.task_template) === 'photo') newPhoto(c)
+    else submitChore(c)
+  }
+
+  const retry = (c: Chore) => {
+    const file = files[c.id]
+    if (file) submitChore(c, file)
+    else start(c)
   }
 
   const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     const chore = data?.tasks.find((t) => t.id === photoFor)
-    if (file && chore) {
-      celebrate(chore)
-      submit.mutate({ id: chore.id, file })
-    }
+    if (file && chore) submitChore(chore, file)
     setPhotoFor(null)
   }
 
@@ -207,25 +355,36 @@ export default function ChildToday() {
     )
   }
 
-  if (loadError || !data) {
+  if (!data) {
     return (
       <div className="panel p-5 text-[15px]" role="alert">
         <p className="font-semibold">Your chores did not load.</p>
         <p className="mt-1" style={{ color: 'var(--ink-2)' }}>
-          Check the Wi-Fi, then close the app and open it again. If it keeps happening, tell Dad.
+          Check the Wi-Fi, then try again. If it keeps happening, tell Dad.
         </p>
+        <button type="button" className="btn btn-primary mt-3" onClick={() => refetch()} disabled={isRefetching}>
+          {isRefetching ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
+          Try again
+        </button>
       </div>
     )
   }
 
   const { me, tasks, rewards, nowMinutes } = data
-  const required = requiredNow
-  const shown = required.filter(countsTowardUnlock).length
-  const left = required.length - shown
-  const allDone = allDoneNow
-  const waiting = tasks.filter((t) => t.status === 'submitted').reduce((n, t) => n + (t.task_template.xp_value || 0), 0)
-  const anyDone = tasks.some((t) => t.status === 'submitted' || t.status === 'approved')
-  const redo = tasks.filter((t) => t.status === 'rejected')
+  const groups = groupChores(tasks, nowMinutes)
+  const allDone = prog.allDone
+  const hasExtras = tasks.some((t) => t.task_template.required === false)
+  const requiredLeft = prog.total - prog.done
+  const waitingXp = tasks.filter((t) => t.status === 'submitted').reduce((n, t) => n + (t.task_template.xp_value || 0), 0)
+  const anySending = Object.keys(sending).length > 0
+  const requiredList = tasks.filter((t) => t.task_template.required !== false)
+
+  const goToFirstFix = () => {
+    const first = groups.fix[0]
+    if (!first) return
+    rowEls.current.get(first.id)?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' })
+    actionEls.current.get(first.id)?.focus({ preventScroll: true })
+  }
 
   const weekday = new Date(`${data.date}T12:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -234,8 +393,33 @@ export default function ChildToday() {
     timeZone: 'UTC',
   })
 
+  const renderRow = (c: Chore) => (
+    <ChoreRow
+      key={c.id}
+      c={c}
+      nowMinutes={nowMinutes}
+      fresh={!!fresh[c.id]}
+      chip={chips[c.id]}
+      sending={!!sending[c.id]}
+      locked={anySending}
+      error={rowErrors[c.id]}
+      hasFile={!!files[c.id]}
+      onStart={start}
+      onRetry={retry}
+      onNewPhoto={newPhoto}
+      rowRef={(el) => {
+        if (el) rowEls.current.set(c.id, el)
+        else rowEls.current.delete(c.id)
+      }}
+      actionRef={(el) => {
+        if (el) actionEls.current.set(c.id, el)
+        else actionEls.current.delete(c.id)
+      }}
+    />
+  )
+
   return (
-    <div className="space-y-6 pb-4">
+    <div className="space-y-5 pb-4">
       <header className="flex items-end justify-between gap-4 pt-2">
         <div>
           <p className="text-[15px]" style={{ color: 'var(--ink-2)' }}>
@@ -247,32 +431,37 @@ export default function ChildToday() {
         </div>
         <div className="flex items-center gap-3">
           {me.streak > 0 && (
-            <p className="flex items-center gap-1 text-[15px] font-semibold" style={{ color: 'var(--redo)' }}>
-              <Flame className="h-4 w-4" aria-hidden />
-              {me.streak}-day streak
+            <p className="flex flex-col items-end text-[15px] font-semibold leading-tight" style={{ color: 'var(--redo)' }}>
+              <span className="flex items-center gap-1">
+                <Flame className="h-4 w-4" aria-hidden />
+                {me.streak}-day streak
+              </span>
+              {!allDone && me.streak >= 3 && <span className="text-[12px] font-medium">Don&rsquo;t break it</span>}
             </p>
           )}
           <MuteButton muted={muted} onToggle={toggleMute} />
         </div>
       </header>
 
-      <PointsStrip xp={me.xp} waiting={waiting} reduced={reduced} />
+      <PointsStrip xp={me.xp} waiting={waitingXp} reduced={reduced} />
 
-      {required.length > 0 && (
-        <section className="panel p-4" aria-label="Progress">
-          <p className="flex items-center gap-2 text-[17px] font-semibold">
+      {prog.total > 0 && (
+        <section className="panel p-3" aria-label="Progress">
+          <p className="flex items-center gap-2 text-[16px] font-semibold">
             {allDone && (
               <span key="done" className={`inline-flex ${unlockFx ? 'fq-pop' : ''}`} style={{ color: 'var(--ok)' }}>
                 <Check className="h-5 w-5" aria-hidden />
               </span>
             )}
-            {allDone ? 'All chores shown' : `${shown} of ${required.length} shown`}
+            {progressLine(prog)}
           </p>
-          <p className="mt-0.5 text-[14px]" style={{ color: 'var(--ink-2)' }}>
-            {allDone ? 'Rewards are open.' : `${left} to go. Rewards unlock at ${required.length}.`}
-          </p>
-          <div className="mt-3 flex gap-1" aria-hidden>
-            {required.map((t) => {
+          {!allDone && (
+            <p className="mt-0.5 text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              Photos count when sent. Video and check-off chores count after Mom or Dad checks them.
+            </p>
+          )}
+          <div className="mt-2 flex gap-1" aria-hidden>
+            {requiredList.map((t) => {
               const counted = countsTowardUnlock(t)
               const sent = t.status === 'submitted'
               return (
@@ -290,13 +479,6 @@ export default function ChildToday() {
         </section>
       )}
 
-      {!allDone && (me.streak >= 3 || (me.streak === 0 && !anyDone)) && (
-        <p className="-mt-3 flex items-center gap-1.5 text-[14px] font-semibold" style={{ color: 'var(--redo)' }}>
-          <Flame className="h-4 w-4" aria-hidden />
-          {me.streak >= 3 ? 'Don\u2019t break your streak.' : 'Start a streak today.'}
-        </p>
-      )}
-
       {error && (
         <div className="row flex items-start gap-2 p-3 text-[15px]" role="alert" style={{ borderColor: 'rgba(251,113,133,0.4)' }}>
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--miss)' }} aria-hidden />
@@ -304,116 +486,80 @@ export default function ChildToday() {
         </div>
       )}
 
-      {redo.length > 0 && (
-        <p className="flex items-center gap-2 text-[15px] font-semibold" style={{ color: 'var(--redo)' }}>
-          <RotateCcw className="h-4 w-4" aria-hidden />
-          {redo.length === 1 ? '1 chore was sent back. Read the note and redo it.' : `${redo.length} chores were sent back. Read the notes and redo them.`}
-        </p>
+      {groups.fix.length > 0 && (
+        <button
+          type="button"
+          onClick={goToFirstFix}
+          className="flex min-h-[44px] w-full items-center gap-2 text-left text-[15px] font-semibold"
+          style={{ color: 'var(--redo)' }}
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+          {groups.fix.length === 1 ? '1 chore was sent back. Read the note and redo it.' : `${groups.fix.length} chores were sent back. Read the notes and redo them.`}
+        </button>
       )}
 
-      <section aria-label="Chores">
-        <h2 className="mb-3 text-[19px]">Today&apos;s chores</h2>
-        {tasks.length === 0 ? (
-          <div className="panel p-5 text-[15px]" style={{ color: 'var(--ink-2)' }}>
-            Nothing on your list today.
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {tasks.map((c) => {
-              const type = proofTypeOf(c.task_template)
-              const st = statusOf(c, nowMinutes)
-              const open = c.status === 'pending' || c.status === 'rejected'
-              const working = busy === c.id
-              const cutoff = c.task_template.cutoff_time
-              return (
-                <li
-                  key={c.id}
-                  className="row relative p-3"
-                  style={
-                    st === 'rejected'
-                      ? { borderColor: 'rgba(251,191,36,0.45)' }
-                      : st === 'approved' || st === 'shown'
-                        ? { background: 'rgba(52,211,153,0.06)' }
-                        : undefined
-                  }
-                >
-                  <div className="flex items-center gap-3">
-                    <IconTile tone={st === 'approved' || st === 'shown' ? 'ok' : st === 'submitted' ? 'wait' : 'idle'} fresh={!!fresh[c.id]}>
-                      {st === 'approved' || st === 'shown' || st === 'submitted' ? <Check className="h-5 w-5" aria-hidden /> : <ProofIcon type={type} />}
-                    </IconTile>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[16px] font-semibold leading-snug">{c.task_template.name}</p>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px]" style={{ color: 'var(--ink-3)' }}>
-                        <StatusPill status={st} label={st === 'late' && cutoff ? `Late, was due ${formatClock(cutoff)}` : undefined} />
-                        {st === 'pending' && cutoff && <span>Due by {formatClock(cutoff)}</span>}
-                      </p>
-                    </div>
-                    {(open || working) && (
-                      <button
-                        type="button"
-                        className="btn btn-primary shrink-0"
-                        onClick={() => start(c)}
-                        disabled={working || !!busy}
-                        aria-label={`${PROOF_META[type].action}: ${c.task_template.name}`}
-                      >
-                        {working ? (
-                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        ) : type === 'photo' ? (
-                          <Camera className="h-4 w-4" aria-hidden />
-                        ) : type === 'imessage_video' ? (
-                          <MessageSquare className="h-4 w-4" aria-hidden />
-                        ) : null}
-                        {working ? (type === 'photo' ? 'Sending' : 'Saving') : c.status === 'rejected' ? 'Redo' : type === 'photo' ? 'Photo' : type === 'imessage_video' ? 'Sent it' : 'Done'}
-                      </button>
-                    )}
-                  </div>
-                  {chips[c.id] && <FloatChip text={chips[c.id]} tone={type === 'photo' ? 'ok' : 'wait'} />}
+      {tasks.length === 0 && (
+        <div className="panel p-5 text-[15px]" style={{ color: 'var(--ink-2)' }}>
+          Nothing on your list today.
+        </div>
+      )}
 
-                  {open && c.task_template.link_url && (
-                    <a
-                      href={c.task_template.link_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-quiet ml-[52px] mt-2 inline-flex !px-3"
-                    >
-                      <ExternalLink className="h-4 w-4" aria-hidden />
-                      Open the lesson
-                    </a>
-                  )}
-                  {open && type === 'photo' && c.prompt && (
-                    <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
-                      Photo: {c.prompt.replace(/^\S+\s/, '')}
-                    </p>
-                  )}
-                  {open && type === 'imessage_video' && (
-                    <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
-                      Record a video, text it to Dad or Mom, then tap Sent it.
-                    </p>
-                  )}
-                  {c.status === 'rejected' && c.reviewNote && (
-                    <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--redo)' }}>
-                      “{c.reviewNote}”
-                    </p>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+      {groups.fix.length > 0 && (
+        <section aria-labelledby="g-fix">
+          <h2 id="g-fix" className="mb-2 text-[19px]" style={{ color: 'var(--redo)' }}>
+            Fix these
+          </h2>
+          <ul className="space-y-2">{groups.fix.map(renderRow)}</ul>
+        </section>
+      )}
 
-      <TrainingCard onPoints={() => qc.invalidateQueries({ queryKey: TODAY_KEY })} />
-      <QuestionCard onPoints={() => qc.invalidateQueries({ queryKey: TODAY_KEY })} />
+      {groups.next.length > 0 && (
+        <section aria-labelledby="g-next">
+          <h2 id="g-next" className="mb-2 text-[19px]">
+            Do next
+          </h2>
+          <ul className="space-y-2">{groups.next.map(renderRow)}</ul>
+        </section>
+      )}
+
+      {groups.waiting.length > 0 && (
+        <section aria-labelledby="g-wait">
+          <h2 id="g-wait" className="mb-2 text-[19px]">
+            Waiting on Mom or Dad
+          </h2>
+          <ul className="space-y-2">{groups.waiting.map(renderRow)}</ul>
+        </section>
+      )}
+
+      {groups.finished.length > 0 && (
+        <section aria-label="Finished chores">
+          <button
+            type="button"
+            className="btn btn-quiet w-full justify-between"
+            aria-expanded={showFinished}
+            aria-controls="finished-list"
+            onClick={() => setShowFinished((v) => !v)}
+          >
+            <span>Finished ({groups.finished.length})</span>
+            {showFinished ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+          </button>
+          {showFinished && (
+            <ul id="finished-list" className="mt-2 space-y-2">
+              {groups.finished.map(renderRow)}
+            </ul>
+          )}
+        </section>
+      )}
 
       {rewards.length > 0 && (
         <section aria-label="Rewards">
           <h2 className="mb-1 text-[19px]">Rewards</h2>
           <p className="mb-3 text-[14px]" style={{ color: 'var(--ink-2)' }}>
-            {required.length === 0
+            {prog.total === 0
               ? 'Rewards open once today\'s chores are on your list and shown.'
               : allDone
                 ? 'You showed everything. Ask for one.'
-                : 'These open when every chore is shown.'}
+                : `These open when ${hasExtras ? 'all required chores are' : 'every chore is'} shown.`}
           </p>
           <ul className="space-y-2">
             {rewards.map((r) => (
@@ -432,13 +578,13 @@ export default function ChildToday() {
                           ? 'Not today.'
                           : r.unlocked
                             ? 'Open'
-                            : required.length === 0
+                            : prog.total === 0
                               ? 'Locked, no chores on your list yet'
-                              : `Locked, ${left} chore${left === 1 ? '' : 's'} left`}
+                              : `Locked, ${requiredLeft} ${hasExtras ? 'required ' : ''}chore${requiredLeft === 1 ? '' : 's'} left`}
                   </p>
                 </div>
                 {r.unlocked && !r.request && (
-                  <button type="button" className="btn btn-quiet shrink-0" onClick={() => ask.mutate(r.id)} disabled={ask.isPending}>
+                  <button type="button" className="btn btn-primary shrink-0" onClick={() => ask.mutate(r.id)} disabled={ask.isPending}>
                     Ask
                   </button>
                 )}
@@ -447,6 +593,19 @@ export default function ChildToday() {
           </ul>
         </section>
       )}
+
+      <section aria-labelledby="g-extra">
+        <h2 id="g-extra" className="text-[19px]">
+          Extra sparks
+        </h2>
+        <p className="mb-3 text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          Optional. Earn bonus points.
+        </p>
+        <div className="space-y-2">
+          <TrainingCard onPoints={() => qc.invalidateQueries({ queryKey: TODAY_KEY })} />
+          <QuestionCard onPoints={() => qc.invalidateQueries({ queryKey: TODAY_KEY })} />
+        </div>
+      </section>
 
       <p className="sr-only" aria-live="polite">
         {announce}
