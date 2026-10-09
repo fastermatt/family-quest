@@ -91,7 +91,7 @@ export default function ChildToday() {
   const { data, isLoading, error: loadError } = useQuery({
     queryKey: TODAY_KEY,
     queryFn: () => getJson<Today>('/api/child/today'),
-    refetchInterval: 60_000,
+    refetchInterval: 20_000, // parent approvals show up quickly
     refetchOnWindowFocus: true,
   })
 
@@ -118,7 +118,10 @@ export default function ChildToday() {
       if (ctx?.prev) qc.setQueryData(TODAY_KEY, ctx.prev)
       setFresh(({ [id]: _gone, ...rest }) => rest)
       setChips(({ [id]: _gone, ...rest }) => rest)
-      setError(e instanceof Error ? e.message : 'That did not go through. Try again.')
+      const msg = e instanceof Error ? e.message : ''
+      const friendly = /not found/i.test(msg) ? 'That chore was changed by a parent. Your list just refreshed.' : msg || 'That did not go through. Try again.'
+      setAnnounce(friendly)
+      setError(friendly)
     },
     onSettled: () => {
       setBusy(null)
@@ -152,12 +155,17 @@ export default function ChildToday() {
     playChime('all', 0.35) // queued just behind the single chime
     setUnlockFx(true)
     setBurst(true)
+    window.setTimeout(() => setBurst(false), 2000)
   }, [allDoneNow, data])
 
   const celebrate = (c: Chore) => {
     const xp = c.task_template.xp_value
     setFresh((f) => ({ ...f, [c.id]: true }))
-    if (xp > 0) setChips((m) => ({ ...m, [c.id]: xpLabel(c) }))
+    if (xp > 0) {
+      setChips((m) => ({ ...m, [c.id]: xpLabel(c) }))
+      // The chip has played by then; take it out of the page.
+      window.setTimeout(() => setChips(({ [c.id]: _gone, ...rest }) => rest), 1600)
+    }
     setAnnounce(xp > 0 ? `${c.task_template.name} shown. ${xpLabel(c)}` : `${c.task_template.name} shown.`)
     haptic()
     playChime('done')

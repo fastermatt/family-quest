@@ -139,7 +139,7 @@ export function ParentToday() {
   const waiting = [
     ...data.children.flatMap((c) => c.tasks.filter((t) => t.status === 'submitted')),
     ...data.olderWaiting,
-  ]
+  ].sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? '')) // oldest first
   const dateLabel = new Date(`${data.date}T12:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
