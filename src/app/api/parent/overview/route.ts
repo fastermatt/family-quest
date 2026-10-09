@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireParent } from '@/lib/api-auth'
-import { todayInTz, zonedParts } from '@/lib/dates'
+import { addDays, todayInTz, zonedParts } from '@/lib/dates'
+import { questionFor } from '@/lib/reflection'
 import { activeOnly } from '@/lib/proof'
 
 export const dynamic = 'force-dynamic'
@@ -56,6 +57,16 @@ export async function GET() {
         .order('created_at')
     : { data: [] }
 
+  // Grey's answers to the question of the day, last two weeks.
+  const { data: reflections } = kidIds.length
+    ? await admin
+        .from('reflections')
+        .select('profile_id, day, question, answer')
+        .in('profile_id', kidIds)
+        .gte('day', addDays(date, -13))
+        .order('day', { ascending: false })
+    : { data: [] }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const shape = (t: any) => {
     const tpl = Array.isArray(t.task_template) ? t.task_template[0] : t.task_template
@@ -93,6 +104,10 @@ export async function GET() {
       xp: k.xp_total ?? 0,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tasks: activeOnly((tasks ?? []) as any[]).filter((t) => t.assigned_to === k.id).map(shape),
+      question: questionFor(date),
+      reflections: (reflections ?? [])
+        .filter((r) => r.profile_id === k.id)
+        .map((r) => ({ day: r.day, question: r.question, answer: r.answer })),
     })),
     olderWaiting: (olderWaiting ?? []).map(shape),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { formatClock, timeToMinutes, zonedParts, FAMILY_TZ } from './dates'
 import { PROOF_META, activeOnly, proofTypeOf } from './proof'
 import { PHOTO_BUCKET, photoPathFromUrl } from './storage'
+import { questionFor } from './reflection'
 
 export interface SummaryChore {
   name: string
@@ -20,6 +21,8 @@ export interface ChildSummary {
   done: number
   total: number
   chores: SummaryChore[]
+  question: string
+  answer: string | null
 }
 
 export interface FamilySummary {
@@ -102,6 +105,13 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
         })
       }
 
+      const { data: refl } = await supabase
+        .from('reflections')
+        .select('question, answer')
+        .eq('profile_id', kid.id)
+        .eq('day', date)
+        .maybeSingle()
+
       // Not done first: that is what a parent needs to see.
       chores.sort((a, b) => Number(shownForParents(a)) - Number(shownForParents(b)))
 
@@ -112,6 +122,8 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
         done: chores.filter(shownForParents).length,
         total: chores.length,
         chores,
+        question: refl?.question ?? questionFor(date),
+        answer: refl?.answer ?? null,
       })
     }
 
@@ -149,7 +161,8 @@ export function summaryText(s: FamilySummary): string {
   return s.children
     .map((c) => {
       const lines = c.chores.map((ch) => `${shownForParents(ch) ? '✓' : DONE.has(ch.status) ? '…' : '✗'} ${ch.name} — ${statusLabel(ch).text}`)
-      return `${c.name}: ${c.done} of ${c.total} done${c.streak ? ` · ${c.streak}-day streak` : ''}\n${lines.join('\n')}`
+      const q = `\n\nQuestion of the day: ${c.question}\n${c.answer ? `“${c.answer}”` : 'Not answered.'}`
+      return `${c.name}: ${c.done} of ${c.total} done${c.streak ? ` · ${c.streak}-day streak` : ''}\n${lines.join('\n')}${q}`
     })
     .join('\n\n')
 }
@@ -185,6 +198,11 @@ export function summaryHtml(s: FamilySummary, appUrl: string): string {
   <div style="font-size:20px;font-weight:700;color:#0f172a">${esc(c.emoji)} ${esc(c.name)}: ${c.done} of ${c.total} done</div>
   <div style="font-size:14px;color:${allDone ? '#15803d' : '#b91c1c'};margin:4px 0 8px">${allDone ? 'Everything done today.' : `${c.total - c.done} still not done.`}${c.streak ? ` <span style="color:#64748b">· ${c.streak}-day streak</span>` : ''}</div>
   <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">${rows}</table>
+  <div style="margin-top:14px;padding:12px 14px;background:#f8fafc;border-radius:8px">
+    <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Question of the day</div>
+    <div style="font-size:15px;color:#0f172a;font-weight:600;margin-top:2px">${esc(c.question)}</div>
+    <div style="font-size:15px;color:${c.answer ? '#334155' : '#94a3b8'};margin-top:4px">${c.answer ? `“${esc(c.answer)}”` : 'Not answered today.'}</div>
+  </div>
 </div>`
     })
     .join('')

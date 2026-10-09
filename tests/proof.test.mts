@@ -114,3 +114,18 @@ test('photo hints match the chore', () => {
   assert.equal(photoPrompt({ name: 'Make bed', photo_hint: 'Custom' }), '📸 Custom')
   assert.match(photoPrompt({ name: 'Make bed', photo_hint: '  ' }), /made bed/)
 })
+
+import { QUESTIONS, cleanAnswer, questionFor } from '../src/lib/reflection.ts'
+
+test('question of the day rotates and is stable for a date', () => {
+  assert.equal(questionFor('2026-10-09'), questionFor('2026-10-09'))
+  assert.notEqual(questionFor('2026-10-09'), questionFor('2026-10-10'))
+  const seen = new Set(Array.from({ length: QUESTIONS.length }, (_, i) => questionFor(addDays('2026-10-09', i))))
+  assert.equal(seen.size, QUESTIONS.length)
+})
+
+test('answers must be a real sentence', () => {
+  assert.ok(cleanAnswer('idk').error)
+  assert.ok(cleanAnswer(42).error)
+  assert.equal(cleanAnswer('  I learned   to fold my shirts.  ').answer, 'I learned to fold my shirts.')
+})

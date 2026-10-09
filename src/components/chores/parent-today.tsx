@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useState } from 'react'
-import { AlertTriangle, Check, Flame, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
+import { AlertTriangle, Check, Flame, Lightbulb, Loader2, MessageSquare, Plus, RotateCcw } from 'lucide-react'
 import { ProofIcon, StatusPill, type StatusKey } from './status'
 import { formatClock } from '@/lib/dates'
 import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
@@ -25,7 +25,15 @@ interface Overview {
   family: { name: string }
   date: string
   nowMinutes: number
-  children: { id: string; name: string; emoji: string; streak: number; tasks: Task[] }[]
+  children: {
+    id: string
+    name: string
+    emoji: string
+    streak: number
+    tasks: Task[]
+    question?: string
+    reflections?: { day: string; question: string; answer: string }[]
+  }[]
   olderWaiting: Task[]
   requests: { id: string; childId: string; reward: string }[]
 }
@@ -382,9 +390,58 @@ export function ParentToday() {
                 })}
               </ul>
             )}
+            <Reflections child={child} today={data.date} />
           </section>
         )
       })}
+    </div>
+  )
+}
+
+function shortDay(iso: string) {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+/** Today's question and the child's answer, with the last two weeks below. */
+function Reflections({ child, today }: { child: Overview['children'][number]; today: string }) {
+  const all = child.reflections ?? []
+  const todays = all.find((r) => r.day === today)
+  const past = all.filter((r) => r.day !== today)
+  return (
+    <div className="panel mt-3 p-4">
+      <p className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-3)' }}>
+        <Lightbulb className="h-3.5 w-3.5" aria-hidden />
+        Question of the day
+      </p>
+      <p className="mt-1 text-[15px] font-semibold">{todays?.question ?? child.question}</p>
+      {todays ? (
+        <p className="mt-1.5 whitespace-pre-wrap text-[15px]" style={{ color: 'var(--ink-2)' }}>
+          “{todays.answer}”
+        </p>
+      ) : (
+        <p className="mt-1.5 text-[14px]" style={{ color: 'var(--ink-3)' }}>
+          {child.name} has not answered yet.
+        </p>
+      )}
+      {past.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[14px] font-semibold" style={{ color: 'var(--accent)' }}>
+            Past answers ({past.length})
+          </summary>
+          <ul className="mt-2 space-y-3">
+            {past.map((r) => (
+              <li key={r.day}>
+                <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+                  {shortDay(r.day)} · {r.question}
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-[15px]" style={{ color: 'var(--ink-2)' }}>
+                  “{r.answer}”
+                </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   )
 }

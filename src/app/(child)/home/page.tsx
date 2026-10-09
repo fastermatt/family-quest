@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Camera, Check, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
 import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
 import { PointsStrip } from '@/components/kid/points-strip'
+import { QuestionCard } from '@/components/kid/question-card'
 import { haptic, playChime, primeAudio, useMuted } from '@/components/kid/sound'
 import { ProofIcon, StatusPill, type StatusKey } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
@@ -387,6 +388,8 @@ export default function ChildToday() {
           </ul>
         )}
       </section>
+
+      <QuestionCard onPoints={() => qc.invalidateQueries({ queryKey: TODAY_KEY })} />
 
       {rewards.length > 0 && (
         <section aria-label="Rewards">
