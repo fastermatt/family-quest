@@ -12,6 +12,7 @@ export interface ChoreInput {
   proof_type?: unknown
   cutoff_time?: unknown
   photo_hint?: unknown
+  link_url?: unknown
   required?: unknown
   xp_value?: unknown
   time_of_day?: unknown
@@ -65,6 +66,21 @@ export function cleanChore(input: ChoreInput, partial: boolean): { values?: Reco
   if (input.photo_hint !== undefined) {
     const h = typeof input.photo_hint === 'string' ? input.photo_hint.trim().slice(0, 120) : ''
     v.photo_hint = h || null
+  }
+
+  if (input.link_url !== undefined) {
+    const raw = typeof input.link_url === 'string' ? input.link_url.trim() : ''
+    if (!raw) v.link_url = null
+    else {
+      const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+      try {
+        const u = new URL(withScheme)
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error()
+        v.link_url = u.toString().slice(0, 300)
+      } catch {
+        return { error: 'That link does not look right.' }
+      }
+    }
   }
 
   if (input.required !== undefined) v.required = input.required !== false

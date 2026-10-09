@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Camera, Check, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
+import { AlertTriangle, Camera, Check, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
 import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
 import { PointsStrip } from '@/components/kid/points-strip'
 import { QuestionCard } from '@/components/kid/question-card'
@@ -26,6 +26,7 @@ interface Chore {
     cutoff_time?: string | null
     required?: boolean
     xp_value: number
+    link_url?: string | null
   }
 }
 
@@ -368,6 +369,17 @@ export default function ChildToday() {
                   </div>
                   {chips[c.id] && <FloatChip text={chips[c.id]} tone={type === 'photo' ? 'ok' : 'wait'} />}
 
+                  {open && c.task_template.link_url && (
+                    <a
+                      href={c.task_template.link_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-quiet ml-[52px] mt-2 inline-flex !px-3"
+                    >
+                      <ExternalLink className="h-4 w-4" aria-hidden />
+                      Open the lesson
+                    </a>
+                  )}
                   {open && type === 'photo' && c.prompt && (
                     <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
                       Photo: {c.prompt.replace(/^\S+\s/, '')}

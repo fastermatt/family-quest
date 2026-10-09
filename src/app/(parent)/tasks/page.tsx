@@ -22,6 +22,7 @@ interface Chore {
   photo_required?: boolean
   cutoff_time?: string | null
   photo_hint?: string | null
+  link_url?: string | null
   required?: boolean
   xp_value: number
   active: boolean
@@ -40,6 +41,7 @@ interface Draft {
   recurrence_days: number[]
   cutoff_time: string
   photo_hint: string
+  link_url: string
   required: boolean
   xp_value: number
   assigned_to: string[]
@@ -98,6 +100,7 @@ function toDraft(c: Chore | null, kids: Kid[]): Draft {
       recurrence_days: [],
       cutoff_time: '',
       photo_hint: '',
+      link_url: '',
       required: true,
       xp_value: 100,
       assigned_to: kids.length === 1 ? [kids[0].id] : [],
@@ -110,6 +113,7 @@ function toDraft(c: Chore | null, kids: Kid[]): Draft {
     recurrence_days: c.recurrence_days ?? [],
     cutoff_time: c.cutoff_time ? c.cutoff_time.slice(0, 5) : '',
     photo_hint: c.photo_hint ?? '',
+    link_url: c.link_url ?? '',
     required: c.required !== false,
     xp_value: c.xp_value,
     assigned_to: c.assigned_to,
@@ -191,6 +195,22 @@ function ChoreForm({
           </div>
         )}
       </fieldset>
+
+      <div>
+        <label htmlFor={`${id}-link`} className="mb-1.5 block text-[14px] font-semibold">
+          Link <span className="font-normal" style={{ color: 'var(--ink-3)' }}>(optional)</span>
+        </label>
+        <input
+          id={`${id}-link`}
+          className="field"
+          type="url"
+          inputMode="url"
+          value={d.link_url}
+          onChange={(e) => set('link_url', e.target.value)}
+          placeholder="https://… an app or page he opens for this chore"
+          maxLength={300}
+        />
+      </div>
 
       <fieldset>
         <legend className="mb-1.5 text-[14px] font-semibold">How often</legend>
