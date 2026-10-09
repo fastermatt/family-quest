@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { addDays, zonedParts } from './dates'
-import { countsTowardUnlock, proofTypeOf } from './proof'
+import { countsTowardUnlock, photoPrompt, proofTypeOf } from './proof'
 
 interface Template {
   id: string
+  name: string
+  photo_hint?: string | null
   created_at?: string
   recurrence_type: string
   recurrence_days: number[] | null
@@ -76,16 +78,10 @@ export async function generateTaskInstances(supabase: SupabaseClient<any, any, a
 
   const due = (templates as Template[]).filter((t) => runsOn(t, dayOfWeek, dayOfMonth, date))
 
-  const { data: challenges } = await supabase.from('photo_challenges').select('prompt_text, emoji')
-  const pool = challenges ?? []
-
   const rows = due.flatMap((t) =>
     (t.task_assignments ?? []).map((a) => {
-      let prompt: string | null = null
-      if (proofTypeOf(t) === 'photo' && pool.length) {
-        const pick = pool[Math.floor(Math.random() * pool.length)]
-        prompt = `${pick.emoji} ${pick.prompt_text}`
-      }
+      // The photo instruction says what to photograph for THIS chore.
+      const prompt = proofTypeOf(t) === 'photo' ? photoPrompt(t) : null
       return {
         template_id: t.id,
         assigned_to: a.assigned_to,

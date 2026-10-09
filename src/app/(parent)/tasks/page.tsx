@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { AlertTriangle, ChevronDown, Lock, Loader2, Pencil, Plus, Power, Trash2, X } from 'lucide-react'
 import { ProofIcon, PROOF_SHORT } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
-import { PROOF_TYPES, proofTypeOf, type ProofType } from '@/lib/proof'
+import { PROOF_TYPES, defaultPhotoHint, proofTypeOf, type ProofType } from '@/lib/proof'
 
 interface Kid {
   id: string
@@ -21,6 +21,7 @@ interface Chore {
   proof_type?: ProofType
   photo_required?: boolean
   cutoff_time?: string | null
+  photo_hint?: string | null
   required?: boolean
   xp_value: number
   active: boolean
@@ -38,6 +39,7 @@ interface Draft {
   recurrence_type: 'daily' | 'weekdays' | 'weekly' | 'once'
   recurrence_days: number[]
   cutoff_time: string
+  photo_hint: string
   required: boolean
   xp_value: number
   assigned_to: string[]
@@ -95,6 +97,7 @@ function toDraft(c: Chore | null, kids: Kid[]): Draft {
       recurrence_type: 'daily',
       recurrence_days: [],
       cutoff_time: '',
+      photo_hint: '',
       required: true,
       xp_value: 100,
       assigned_to: kids.length === 1 ? [kids[0].id] : [],
@@ -106,6 +109,7 @@ function toDraft(c: Chore | null, kids: Kid[]): Draft {
     recurrence_type: (['daily', 'weekdays', 'weekly', 'once'].includes(c.recurrence_type) ? c.recurrence_type : 'daily') as Draft['recurrence_type'],
     recurrence_days: c.recurrence_days ?? [],
     cutoff_time: c.cutoff_time ? c.cutoff_time.slice(0, 5) : '',
+    photo_hint: c.photo_hint ?? '',
     required: c.required !== false,
     xp_value: c.xp_value,
     assigned_to: c.assigned_to,
@@ -168,6 +172,24 @@ function ChoreForm({
         <p className="mt-2 text-[14px]" style={{ color: 'var(--ink-2)' }}>
           {PROOF_HELP[d.proof_type]}
         </p>
+        {d.proof_type === 'photo' && (
+          <div className="mt-3">
+            <label htmlFor={`${id}-hint`} className="mb-1.5 block text-[14px] font-semibold">
+              What the photo should show
+            </label>
+            <input
+              id={`${id}-hint`}
+              className="field"
+              value={d.photo_hint}
+              onChange={(e) => set('photo_hint', e.target.value)}
+              placeholder={defaultPhotoHint(d.name || 'the chore')}
+              maxLength={120}
+            />
+            <p className="mt-1.5 text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              Grey sees this when he opens the chore. Leave blank to use the suggestion.
+            </p>
+          </div>
+        )}
       </fieldset>
 
       <fieldset>

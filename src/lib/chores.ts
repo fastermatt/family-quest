@@ -11,6 +11,7 @@ export interface ChoreInput {
   recurrence_days?: unknown
   proof_type?: unknown
   cutoff_time?: unknown
+  photo_hint?: unknown
   required?: unknown
   xp_value?: unknown
   time_of_day?: unknown
@@ -59,6 +60,11 @@ export function cleanChore(input: ChoreInput, partial: boolean): { values?: Reco
     else if (typeof input.cutoff_time === 'string' && /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(input.cutoff_time)) {
       v.cutoff_time = input.cutoff_time.length === 5 ? `${input.cutoff_time}:00` : input.cutoff_time
     } else return { error: 'That time does not look right.' }
+  }
+
+  if (input.photo_hint !== undefined) {
+    const h = typeof input.photo_hint === 'string' ? input.photo_hint.trim().slice(0, 120) : ''
+    v.photo_hint = h || null
   }
 
   if (input.required !== undefined) v.required = input.required !== false

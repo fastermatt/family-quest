@@ -3,6 +3,7 @@ import { bad, childInFamily, requireParent } from '@/lib/api-auth'
 import { cleanChore } from '@/lib/chores'
 import { todayInTz } from '@/lib/dates'
 import { generateTaskInstances } from '@/lib/generate'
+import { photoPrompt, proofTypeOf } from '@/lib/proof'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +50,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .eq('due_date', todayInTz())
       .eq('status', 'submitted')
       .is('photo_url', null)
+  }
+
+  if (values.photo_hint !== undefined || values.name !== undefined || values.proof_type !== undefined) {
+    // Keep today's open copy in step with the new photo instruction.
+    const { data: tpl } = await admin.from('task_templates').select('name, photo_hint, proof_type, photo_required').eq('id', id).single()
+    if (tpl) {
+      await admin
+        .from('task_instances')
+        .update({ photo_challenge_prompt: proofTypeOf(tpl) === 'photo' ? photoPrompt(tpl) : null })
+        .eq('template_id', id)
+        .eq('due_date', todayInTz())
+        .in('status', ['pending', 'rejected'])
+    }
   }
 
   if (values.active === false) {

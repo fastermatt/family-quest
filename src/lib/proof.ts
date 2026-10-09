@@ -46,6 +46,37 @@ export function proofTypeOf(t: ProofSource | null | undefined): ProofType {
   return t?.photo_required ? 'photo' : 'check'
 }
 
+// What the photo should show, guessed from the chore name. Used when a parent
+// has not written their own instruction. Order matters: first match wins.
+const PHOTO_GUESSES: [RegExp, string][] = [
+  [/\bbed\b/i, 'Your made bed: covers pulled up, pillows on top'],
+  [/kitchen|dish/i, 'The clean counters and the empty sink'],
+  [/homework|school|worksheet|study/i, 'Your finished homework, with your name showing'],
+  [/poop/i, 'The bag of poop you picked up, with the clean yard behind it'],
+  [/egg/i, "Today's eggs in your hand or the basket"],
+  [/chicken.*water|water.*chicken/i, 'The chicken waterer filled with clean water'],
+  [/chicken/i, 'The chicken feeder filled up'],
+  [/trash|garbage|recycl/i, 'The trash can out at the curb'],
+  [/laundry|clothes|fold/i, 'Your folded clothes, put away'],
+  [/room|tidy|clean up/i, 'Your tidy room, floor showing'],
+  [/feed|food/i, 'The full food bowl'],
+  [/water/i, 'The full water bowl'],
+  [/dog|walk/i, 'You and the dog on the walk'],
+  [/vacuum|sweep|mop/i, 'The clean floor'],
+  [/yard|weed|rake|mow/i, 'The finished yard'],
+]
+
+export function defaultPhotoHint(choreName: string): string {
+  const hit = PHOTO_GUESSES.find(([re]) => re.test(choreName))
+  return hit ? hit[1] : `The finished job: ${choreName.trim().toLowerCase()}`
+}
+
+/** The instruction Grey sees under a photo chore. */
+export function photoPrompt(t: { name: string; photo_hint?: string | null }): string {
+  const hint = t.photo_hint?.trim() || defaultPhotoHint(t.name)
+  return `📸 ${hint}`
+}
+
 export interface UnlockTask {
   id: string
   status: string

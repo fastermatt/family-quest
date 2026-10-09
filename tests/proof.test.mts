@@ -101,3 +101,16 @@ test('cleanChore: partial update only touches given fields', () => {
   assert.deepEqual(r.values, { cutoff_time: null })
   assert.equal(cleanChore({ xp_value: 99999 }, true).values!.xp_value, 1000)
 })
+
+import { defaultPhotoHint, photoPrompt } from '../src/lib/proof.ts'
+
+test('photo hints match the chore', () => {
+  assert.match(defaultPhotoHint('Make bed'), /made bed/)
+  assert.match(defaultPhotoHint('Fill Chickens water'), /waterer/)
+  assert.match(defaultPhotoHint('Fill Chickens Food'), /feeder/)
+  assert.match(defaultPhotoHint('Get Eggs'), /eggs/)
+  assert.match(defaultPhotoHint('Take out trash'), /curb/)
+  assert.match(defaultPhotoHint('Polish the piano'), /polish the piano/)
+  assert.equal(photoPrompt({ name: 'Make bed', photo_hint: 'Custom' }), '📸 Custom')
+  assert.match(photoPrompt({ name: 'Make bed', photo_hint: '  ' }), /made bed/)
+})
