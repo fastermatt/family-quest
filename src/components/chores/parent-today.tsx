@@ -89,6 +89,25 @@ export function ParentToday() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['parent-overview'] }),
   })
 
+  const approveAll = useMutation({
+    mutationFn: async () => {
+      const ids = (qc.getQueryData<Overview>(['parent-overview'])?.children ?? [])
+        .flatMap((c) => c.tasks)
+        .concat(qc.getQueryData<Overview>(['parent-overview'])?.olderWaiting ?? [])
+        .filter((t) => t.status === 'submitted' && t.hasPhoto && proofTypeOf(t.template) === 'photo')
+        .map((t) => t.id)
+      for (const id of ids) {
+        // One at a time so points and streaks add up in order; skip any already reviewed.
+        await post(`/api/parent/review/${id}`, { action: 'approve' }).catch((e) => {
+          if (!(e instanceof Error) || !/Already reviewed/.test(e.message)) throw e
+        })
+      }
+    },
+    onMutate: () => setError(null),
+    onError: (e) => setError(e instanceof Error ? e.message : 'Some approvals did not save.'),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['parent-overview'] }),
+  })
+
   // Normally the 5am job does this; this is the manual fallback.
   const makeList = useMutation({
     mutationFn: () => post('/api/generate-task-instances', {}),
@@ -130,6 +149,9 @@ export function ParentToday() {
 
   const busyId = review.isPending ? review.variables?.id : null
 
+  // Busy parent shortcut: photos already show the work, so approve them in one tap.
+  const photosWaiting = waiting.filter((t) => proofTypeOf(t.template) === 'photo' && t.hasPhoto)
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -154,9 +176,17 @@ export function ParentToday() {
 
       {/* What needs a parent, first. */}
       <section aria-labelledby="needs-you">
-        <h2 id="needs-you" className="mb-3 text-[19px]">
-          {waiting.length + data.requests.length > 0 ? `Needs you (${waiting.length + data.requests.length})` : 'Needs you'}
-        </h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="needs-you" className="text-[19px]">
+            {waiting.length + data.requests.length > 0 ? `Needs you (${waiting.length + data.requests.length})` : 'Needs you'}
+          </h2>
+          {photosWaiting.length >= 2 && (
+            <button type="button" className="btn btn-quiet" disabled={approveAll.isPending || review.isPending} onClick={() => approveAll.mutate()}>
+              {approveAll.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+              Approve all {photosWaiting.length} photos
+            </button>
+          )}
+        </div>
 
         {waiting.length + data.requests.length === 0 ? (
           <p className="panel p-4 text-[15px]" style={{ color: 'var(--ink-2)' }}>

@@ -1,8 +1,11 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Camera, Check, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
+import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
+import { PointsStrip } from '@/components/kid/points-strip'
+import { haptic, playChime, primeAudio, useMuted } from '@/components/kid/sound'
 import { ProofIcon, StatusPill, type StatusKey } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
 import { PROOF_META, countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
@@ -55,15 +58,38 @@ function statusOf(c: Chore, nowMinutes: number): StatusKey {
   return isPastCutoff(c.task_template.cutoff_time, nowMinutes) ? 'late' : 'pending'
 }
 
+const TODAY_KEY = ['child-today']
+
+// Mark one chore as sent, and open rewards if that was the last one needed.
+function withSubmitted(d: Today, id: string): Today {
+  const tasks = d.tasks.map((t) => (t.id === id ? { ...t, status: 'submitted' } : t))
+  const req = tasks.filter((t) => t.task_template.required !== false)
+  const all = req.length > 0 && req.every(countsTowardUnlock)
+  return { ...d, tasks, rewards: all ? d.rewards.map((r) => (r.unlocked ? r : { ...r, unlocked: true })) : d.rewards }
+}
+
+function xpLabel(c: Chore) {
+  const xp = c.task_template.xp_value
+  return proofTypeOf(c.task_template) === 'photo' ? `+${xp}` : `+${xp} when checked`
+}
+
 export default function ChildToday() {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
   const [photoFor, setPhotoFor] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fresh, setFresh] = useState<Record<string, true>>({}) // chores finished this session
+  const [chips, setChips] = useState<Record<string, string>>({})
+  const [announce, setAnnounce] = useState('')
+  const [burst, setBurst] = useState(false)
+  const [unlockFx, setUnlockFx] = useState(false)
+  const prevAll = useRef<boolean | null>(null)
+  const reduced = useReducedMotion()
+  const [muted, toggleMute] = useMuted()
 
   const { data, isLoading, error: loadError } = useQuery({
-    queryKey: ['child-today'],
+    queryKey: TODAY_KEY,
     queryFn: () => getJson<Today>('/api/child/today'),
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -80,14 +106,23 @@ export default function ChildToday() {
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error || 'That did not go through. Try again.')
     },
-    onMutate: ({ id }) => {
+    onMutate: async ({ id }) => {
       setBusy(id)
       setError(null)
+      await qc.cancelQueries({ queryKey: TODAY_KEY })
+      const prev = qc.getQueryData<Today>(TODAY_KEY)
+      if (prev) qc.setQueryData<Today>(TODAY_KEY, withSubmitted(prev, id))
+      return { prev }
     },
-    onError: (e) => setError(e instanceof Error ? e.message : 'That did not go through. Try again.'),
+    onError: (e, { id }, ctx) => {
+      if (ctx?.prev) qc.setQueryData(TODAY_KEY, ctx.prev)
+      setFresh(({ [id]: _gone, ...rest }) => rest)
+      setChips(({ [id]: _gone, ...rest }) => rest)
+      setError(e instanceof Error ? e.message : 'That did not go through. Try again.')
+    },
     onSettled: () => {
       setBusy(null)
-      qc.invalidateQueries({ queryKey: ['child-today'] })
+      qc.invalidateQueries({ queryKey: TODAY_KEY })
     },
   })
 
@@ -98,14 +133,43 @@ export default function ChildToday() {
       if (!res.ok) throw new Error(body.error || 'Could not ask right now.')
     },
     onError: (e) => setError(e instanceof Error ? e.message : 'Could not ask right now.'),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['child-today'] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: TODAY_KEY }),
   })
 
+  // Derived values the all-done effect needs (hooks must run before early returns).
+  const tasksNow = data?.tasks ?? []
+  const requiredNow = tasksNow.filter((t) => t.task_template.required !== false)
+  const allDoneNow = requiredNow.length > 0 && requiredNow.every(countsTowardUnlock)
+
+  // Fires only on a not-all -> all transition seen this session, once per day.
+  useEffect(() => {
+    if (!data) return
+    const was = prevAll.current
+    prevAll.current = allDoneNow
+    if (was === null || was || !allDoneNow) return
+    if (allDoneSeen(data.date)) return
+    markAllDone(data.date)
+    playChime('all', 0.35) // queued just behind the single chime
+    setUnlockFx(true)
+    setBurst(true)
+  }, [allDoneNow, data])
+
+  const celebrate = (c: Chore) => {
+    const xp = c.task_template.xp_value
+    setFresh((f) => ({ ...f, [c.id]: true }))
+    if (xp > 0) setChips((m) => ({ ...m, [c.id]: xpLabel(c) }))
+    setAnnounce(xp > 0 ? `${c.task_template.name} shown. ${xpLabel(c)}` : `${c.task_template.name} shown.`)
+    haptic()
+    playChime('done')
+  }
+
   const start = (c: Chore) => {
+    primeAudio() // unlocks sound while the tap is still fresh
     if (proofTypeOf(c.task_template) === 'photo') {
       setPhotoFor(c.id)
       fileRef.current?.click()
     } else {
+      celebrate(c)
       submit.mutate({ id: c.id })
     }
   }
@@ -113,7 +177,11 @@ export default function ChildToday() {
   const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (file && photoFor) submit.mutate({ id: photoFor, file })
+    const chore = data?.tasks.find((t) => t.id === photoFor)
+    if (file && chore) {
+      celebrate(chore)
+      submit.mutate({ id: chore.id, file })
+    }
     setPhotoFor(null)
   }
 
@@ -140,10 +208,12 @@ export default function ChildToday() {
   }
 
   const { me, tasks, rewards, nowMinutes } = data
-  const required = tasks.filter((t) => t.task_template.required !== false)
+  const required = requiredNow
   const shown = required.filter(countsTowardUnlock).length
   const left = required.length - shown
-  const allDone = required.length > 0 && left === 0
+  const allDone = allDoneNow
+  const waiting = tasks.filter((t) => t.status === 'submitted').reduce((n, t) => n + (t.task_template.xp_value || 0), 0)
+  const anyDone = tasks.some((t) => t.status === 'submitted' || t.status === 'approved')
   const redo = tasks.filter((t) => t.status === 'rejected')
 
   const weekday = new Date(`${data.date}T12:00:00Z`).toLocaleDateString('en-US', {
@@ -164,34 +234,56 @@ export default function ChildToday() {
             {me.emoji} Hi {me.name}
           </h1>
         </div>
-        {me.streak > 0 && (
-          <p className="flex items-center gap-1 text-[15px] font-semibold" style={{ color: 'var(--redo)' }}>
-            <Flame className="h-4 w-4" aria-hidden />
-            {me.streak}-day streak
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          {me.streak > 0 && (
+            <p className="flex items-center gap-1 text-[15px] font-semibold" style={{ color: 'var(--redo)' }}>
+              <Flame className="h-4 w-4" aria-hidden />
+              {me.streak}-day streak
+            </p>
+          )}
+          <MuteButton muted={muted} onToggle={toggleMute} />
+        </div>
       </header>
+
+      <PointsStrip xp={me.xp} waiting={waiting} reduced={reduced} />
 
       {required.length > 0 && (
         <section className="panel p-4" aria-label="Progress">
-          <div className="flex items-baseline justify-between">
-            <p className="text-[17px] font-semibold">
-              {allDone ? 'All chores shown' : `${shown} of ${required.length} shown`}
-            </p>
-            <p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>
-              {allDone ? 'Rewards are open' : `${left} to go`}
-            </p>
-          </div>
+          <p className="flex items-center gap-2 text-[17px] font-semibold">
+            {allDone && (
+              <span key="done" className={`inline-flex ${unlockFx ? 'fq-pop' : ''}`} style={{ color: 'var(--ok)' }}>
+                <Check className="h-5 w-5" aria-hidden />
+              </span>
+            )}
+            {allDone ? 'All chores shown' : `${shown} of ${required.length} shown`}
+          </p>
+          <p className="mt-0.5 text-[14px]" style={{ color: 'var(--ink-2)' }}>
+            {allDone ? 'Rewards are open.' : `${left} to go. Rewards unlock at ${required.length}.`}
+          </p>
           <div className="mt-3 flex gap-1" aria-hidden>
-            {required.map((t) => (
-              <span
-                key={t.id}
-                className="h-2 flex-1 rounded-full transition-colors duration-200"
-                style={{ background: countsTowardUnlock(t) ? 'var(--ok)' : 'rgba(148,163,184,0.18)' }}
-              />
-            ))}
+            {required.map((t) => {
+              const counted = countsTowardUnlock(t)
+              const sent = t.status === 'submitted'
+              return (
+                <span
+                  key={t.id}
+                  className={`fq-seg h-2 flex-1 rounded-full transition-colors duration-200 ${fresh[t.id] ? 'fq-seg-glow' : ''}`}
+                  style={{
+                    color: counted ? 'var(--ok)' : 'var(--wait)',
+                    background: counted ? 'var(--ok)' : sent ? 'rgba(125,211,252,0.45)' : 'rgba(148,163,184,0.18)',
+                  }}
+                />
+              )
+            })}
           </div>
         </section>
+      )}
+
+      {!allDone && (me.streak >= 3 || (me.streak === 0 && !anyDone)) && (
+        <p className="-mt-3 flex items-center gap-1.5 text-[14px] font-semibold" style={{ color: 'var(--redo)' }}>
+          <Flame className="h-4 w-4" aria-hidden />
+          {me.streak >= 3 ? 'Don\u2019t break your streak.' : 'Start a streak today.'}
+        </p>
       )}
 
       {error && (
@@ -225,7 +317,7 @@ export default function ChildToday() {
               return (
                 <li
                   key={c.id}
-                  className="row p-3"
+                  className="row relative p-3"
                   style={
                     st === 'rejected'
                       ? { borderColor: 'rgba(251,191,36,0.45)' }
@@ -235,15 +327,9 @@ export default function ChildToday() {
                   }
                 >
                   <div className="flex items-center gap-3">
-                    <span
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
-                      style={{
-                        background: st === 'approved' || st === 'shown' ? 'rgba(52,211,153,0.14)' : 'rgba(148,163,184,0.1)',
-                        color: st === 'approved' || st === 'shown' ? 'var(--ok)' : 'var(--ink-2)',
-                      }}
-                    >
-                      {st === 'approved' || st === 'shown' ? <Check className="h-5 w-5" aria-hidden /> : <ProofIcon type={type} />}
-                    </span>
+                    <IconTile tone={st === 'approved' || st === 'shown' ? 'ok' : st === 'submitted' ? 'wait' : 'idle'} fresh={!!fresh[c.id]}>
+                      {st === 'approved' || st === 'shown' || st === 'submitted' ? <Check className="h-5 w-5" aria-hidden /> : <ProofIcon type={type} />}
+                    </IconTile>
                     <div className="min-w-0 flex-1">
                       <p className="text-[16px] font-semibold leading-snug">{c.task_template.name}</p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px]" style={{ color: 'var(--ink-3)' }}>
@@ -251,7 +337,7 @@ export default function ChildToday() {
                         {st === 'pending' && cutoff && <span>Due by {formatClock(cutoff)}</span>}
                       </p>
                     </div>
-                    {open && (
+                    {(open || working) && (
                       <button
                         type="button"
                         className="btn btn-primary shrink-0"
@@ -270,6 +356,7 @@ export default function ChildToday() {
                       </button>
                     )}
                   </div>
+                  {chips[c.id] && <FloatChip text={chips[c.id]} tone={type === 'photo' ? 'ok' : 'wait'} />}
 
                   {open && type === 'photo' && c.prompt && (
                     <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
@@ -305,13 +392,10 @@ export default function ChildToday() {
           </p>
           <ul className="space-y-2">
             {rewards.map((r) => (
-              <li key={r.id} className="row flex items-center gap-3 p-3">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
-                  style={{ background: r.unlocked ? 'rgba(45,212,191,0.14)' : 'rgba(148,163,184,0.1)', color: r.unlocked ? 'var(--accent)' : 'var(--ink-3)' }}
-                >
+              <li key={r.id} className={`row flex items-center gap-3 p-3 ${unlockFx && r.unlocked ? 'fq-unlock' : ''}`}>
+                <IconTile tone={r.unlocked ? 'accent' : 'locked'} fresh={unlockFx && r.unlocked}>
                   {r.unlocked ? <LockOpen className="h-5 w-5" aria-hidden /> : <Lock className="h-5 w-5" aria-hidden />}
-                </span>
+                </IconTile>
                 <div className="min-w-0 flex-1">
                   <p className="text-[16px] font-semibold">{r.name}</p>
                   <p className="text-[13px]" style={{ color: r.request === 'approved' ? 'var(--ok)' : r.request === 'denied' ? 'var(--miss)' : 'var(--ink-3)' }}>
@@ -339,6 +423,10 @@ export default function ChildToday() {
         </section>
       )}
 
+      <p className="sr-only" aria-live="polite">
+        {announce}
+      </p>
+      {burst && !reduced && <ParticleBurst />}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} className="hidden" />
     </div>
   )
