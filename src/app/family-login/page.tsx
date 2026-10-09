@@ -114,7 +114,7 @@ export default function FamilyLoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="ChoreZap" height={72} width={69} className="mx-auto mb-3" style={{ height: 72, width: 'auto' }} />
+          <img src="/logo.svg" alt="ChoreZap" height={120} width={114} className="mx-auto mb-3" style={{ height: 120, width: "auto" }} />
           <p className="text-white/50 text-sm">Who are you?</p>
         </div>
 
