@@ -489,7 +489,7 @@ function Training({ child, today }: { child: Overview['children'][number]; today
           <Dumbbell className="h-3.5 w-3.5" aria-hidden />
           Calisthenics
         </span>
-        {trainedDays > 0 && <span className="normal-case tracking-normal">{trainedDays} training days in 2 weeks</span>}
+        {trainedDays > 0 && <span className="normal-case tracking-normal">{trainedDays} training day{trainedDays === 1 ? '' : 's'} in 2 weeks</span>}
       </p>
       <div className="mt-1.5">
         {todays ? (
