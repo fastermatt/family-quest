@@ -22,17 +22,18 @@ const SLOTS = ['morning', 'afternoon', 'four', 'evening']
 const SLOT_HOUR: Record<string, number> = { morning: 7, afternoon: 15, four: 16, evening: 20 }
 
 async function run(req: NextRequest) {
+  // Two ways in: the secret (manual runs and tests, may force), or the database
+  // scheduler, which has no secret. Without the secret a run only happens in
+  // its Denver hour and at most once per slot per day, so a stray caller can
+  // only send the reminder that was going out anyway.
   const secret = process.env.PUSH_CRON_SECRET
-  if (!secret) return NextResponse.json({ error: 'PUSH_CRON_SECRET is not set.' }, { status: 503 })
-  if (req.headers.get('authorization') !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const trusted = !!secret && req.headers.get('authorization') === `Bearer ${secret}`
   const slot = req.nextUrl.searchParams.get('slot') ?? ''
   if (!SLOTS.includes(slot)) {
     return NextResponse.json({ error: 'slot must be morning, afternoon, four or evening.' }, { status: 400 })
   }
 
-  const force = req.nextUrl.searchParams.get('force') === '1'
+  const force = trusted && req.nextUrl.searchParams.get('force') === '1'
   const denverHour = Math.floor(zonedParts(new Date()).minutes / 60)
   if (!force && denverHour !== SLOT_HOUR[slot]) {
     return NextResponse.json({ ok: true, slot, skipped: 'not this hour in Denver', denverHour })
@@ -40,6 +41,11 @@ async function run(req: NextRequest) {
 
   const admin = adminClient()
   const today = todayInTz()
+  if (!force) {
+    // Claim this slot for today; a second call the same day does nothing.
+    const { error: claimErr } = await admin.from('reminder_runs').insert({ slot, day: today })
+    if (claimErr) return NextResponse.json({ ok: true, slot, skipped: 'already ran today' })
+  }
   const { data: kids } = await admin.from('profiles').select('id, name, family_id').eq('role', 'child')
 
   let kidPushes = 0
