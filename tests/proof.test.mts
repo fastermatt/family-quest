@@ -245,3 +245,98 @@ test('excused counts as done and lands in Finished', () => {
   assert.equal(g.finished.length, 1)
   assert.equal(choresLeft([{ id: 'e', status: 'excused', task_template: { required: true } }]), 0)
 })
+
+// ---- progress history ----
+import { dayDone, dayMissed, isOnTime, summarizeDay, summarizePeriod, streaks, dayLook } from '../src/lib/history.ts'
+
+test('dayDone matches the unlock rule', () => {
+  assert.equal(dayDone('approved', 'check'), true)
+  assert.equal(dayDone('excused', 'photo'), true)
+  assert.equal(dayDone('submitted', 'photo'), true)
+  assert.equal(dayDone('submitted', 'written'), true)
+  assert.equal(dayDone('submitted', 'check'), false)
+  assert.equal(dayDone('submitted', 'imessage_video'), false)
+  assert.equal(dayDone('pending', 'photo'), false)
+  assert.equal(dayDone('rejected', 'photo'), false)
+  assert.equal(dayDone('missed', 'photo'), false)
+})
+
+test('dayMissed: pending and rejected only count once the day is over', () => {
+  assert.equal(dayMissed('missed', false), true)
+  assert.equal(dayMissed('pending', false), false)
+  assert.equal(dayMissed('pending', true), true)
+  assert.equal(dayMissed('rejected', true), true)
+  assert.equal(dayMissed('submitted', true), false)
+})
+
+test('isOnTime uses Denver clock time against the cutoff', () => {
+  // 2026-10-05 is MDT (UTC-6): 15:30Z = 9:30 AM, 16:30Z = 10:30 AM
+  const base = { status: 'submitted', proofType: 'photo', cutoffTime: '10:00:00', dueDate: '2026-10-05' }
+  assert.equal(isOnTime({ ...base, submittedAt: '2026-10-05T15:30:00Z' }), true)
+  assert.equal(isOnTime({ ...base, submittedAt: '2026-10-05T16:30:00Z' }), false)
+  assert.equal(isOnTime({ ...base, submittedAt: '2026-10-05T16:00:00Z' }), true) // exactly 10:00
+  // sent the next morning: clock time is early but the day is wrong
+  assert.equal(isOnTime({ ...base, submittedAt: '2026-10-06T14:00:00Z' }), false)
+  // no cutoff: on time if done
+  assert.equal(isOnTime({ ...base, cutoffTime: null, submittedAt: '2026-10-05T23:00:00Z' }), true)
+  // not done is never on time
+  assert.equal(isOnTime({ ...base, status: 'pending', submittedAt: null }), false)
+  // excused has no timestamp and cannot be late
+  assert.equal(isOnTime({ ...base, status: 'excused', submittedAt: null }), true)
+})
+
+test('summarizeDay counts required chores only', () => {
+  const s = summarizeDay([
+    { status: 'approved', proofType: 'photo', cutoffTime: '10:00:00', submittedAt: '2026-10-05T15:00:00Z', dueDate: '2026-10-05' },
+    { status: 'approved', proofType: 'photo', cutoffTime: '10:00:00', submittedAt: '2026-10-05T18:00:00Z', dueDate: '2026-10-05' },
+    { status: 'excused', proofType: 'check' },
+    { status: 'pending', proofType: 'photo' },
+    { status: 'missed', proofType: 'check' },
+    { status: 'pending', proofType: 'photo', required: false },
+  ])
+  assert.deepEqual(s, { total: 5, done: 3, missed: 2, excused: 1, onTime: 2, pct: 60 })
+})
+
+test('summarizeDay on today does not call pending missed', () => {
+  const s = summarizeDay([{ status: 'pending', proofType: 'photo' }, { status: 'submitted', proofType: 'photo' }], false)
+  assert.deepEqual(s, { total: 2, done: 1, missed: 0, excused: 0, onTime: 1, pct: 50 })
+  assert.equal(summarizeDay([]).pct, 0)
+  assert.equal(summarizeDay([]).total, 0)
+})
+
+const D = (date: string, total: number, done: number, onTime = done) => ({
+  date, total, done, missed: total - done, excused: 0, onTime, pct: total ? Math.round((done / total) * 100) : 0,
+})
+
+test('streaks skip empty days and ignore an unfinished today', () => {
+  const days = [D('2026-10-01', 3, 3), D('2026-10-02', 0, 0), D('2026-10-03', 3, 3), D('2026-10-04', 3, 3), D('2026-10-05', 3, 1)]
+  assert.deepEqual(streaks(days, '2026-10-05'), { current: 3, best: 3 })
+  // once today is complete it counts
+  days[4] = D('2026-10-05', 3, 3)
+  assert.deepEqual(streaks(days, '2026-10-05'), { current: 4, best: 4 })
+})
+
+test('streaks: a missed past day resets, best remembers', () => {
+  const days = [D('2026-10-01', 2, 2), D('2026-10-02', 2, 2), D('2026-10-03', 2, 2), D('2026-10-04', 2, 1), D('2026-10-05', 2, 2), D('2026-10-06', 2, 0)]
+  assert.deepEqual(streaks(days, '2026-10-07'), { current: 0, best: 3 })
+  assert.deepEqual(streaks(days.slice(0, 5), '2026-10-07'), { current: 1, best: 3 })
+  assert.deepEqual(streaks([], '2026-10-07'), { current: 0, best: 0 })
+  assert.deepEqual(streaks([D('2026-10-07', 2, 0)], '2026-10-07'), { current: 0, best: 0 })
+})
+
+test('summarizePeriod weights by chores and leaves out unfinished today', () => {
+  const days = [D('2026-10-01', 4, 4), D('2026-10-02', 0, 0), D('2026-10-03', 4, 2, 1), D('2026-10-04', 2, 0)]
+  assert.deepEqual(summarizePeriod(days, '2026-10-05'), { pct: 60, onTimePct: 83, perfectDays: 1, daysTracked: 3 })
+  assert.deepEqual(summarizePeriod([D('2026-10-05', 4, 1)], '2026-10-05'), { pct: 0, onTimePct: 0, perfectDays: 0, daysTracked: 0 })
+  assert.deepEqual(summarizePeriod([D('2026-10-05', 4, 4)], '2026-10-05'), { pct: 100, onTimePct: 100, perfectDays: 1, daysTracked: 1 })
+  assert.deepEqual(summarizePeriod([]), { pct: 0, onTimePct: 0, perfectDays: 0, daysTracked: 0 })
+})
+
+test('dayLook', () => {
+  assert.equal(dayLook(D('x', 0, 0), false), 'none')
+  assert.equal(dayLook(D('x', 3, 3), false), 'perfect')
+  assert.equal(dayLook(D('x', 3, 2), false), 'missed')
+  assert.equal(dayLook(D('x', 3, 0), false), 'missed')
+  assert.equal(dayLook(D('x', 3, 1), true), 'partial')
+  assert.equal(dayLook({ ...D('x', 3, 2), missed: 0 }, false), 'partial')
+})

@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { AlarmClock, AlertTriangle, Camera, Check, ChevronDown, ChevronUp, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
 import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
 import { PointsStrip } from '@/components/kid/points-strip'
+import { WeekStrip } from '@/components/kid/week-strip'
+import { NotifyToggle } from '@/components/notify-toggle'
 import { QuestionCard } from '@/components/kid/question-card'
 import { TrainingCard } from '@/components/kid/training-card'
 import { haptic, playChime, primeAudio, useMuted } from '@/components/kid/sound'
@@ -554,6 +556,8 @@ export default function ChildToday() {
       )}
 
       <PointsStrip xp={me.xp} waiting={waitingXp} reduced={reduced} />
+      <WeekStrip />
+      <NotifyToggle who="kid" />
 
       {prog.total > 0 && (
         <section className="panel p-3" aria-label="Progress">

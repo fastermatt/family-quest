@@ -7,6 +7,7 @@ import { AlarmClock, AlertTriangle, Check, Dumbbell, Flame, Lightbulb, Trophy, L
 import { ProofIcon, StatusPill, type StatusKey } from './status'
 import { formatClock } from '@/lib/dates'
 import { choresLeft, isCrunchTime } from '@/lib/kid-view'
+import { NotifyToggle } from '@/components/notify-toggle'
 import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
 
 interface Task {
@@ -203,6 +204,8 @@ export function ParentToday() {
           Add a chore
         </Link>
       </header>
+
+      <NotifyToggle who="parent" />
 
       {error && (
         <div className="row flex items-start gap-2 p-3 text-[15px]" role="alert" style={{ borderColor: 'rgba(251,113,133,0.4)' }}>

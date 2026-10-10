@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { ClipboardCheck, ListChecks, LogOut, Users } from 'lucide-react'
+import { ClipboardCheck, ListChecks, LogOut, TrendingUp, Users } from 'lucide-react'
 
 const LINKS = [
   { href: '/dashboard', label: 'Today', Icon: ClipboardCheck, match: ['/dashboard', '/review'] },
   { href: '/tasks', label: 'Chores', Icon: ListChecks, match: ['/tasks'] },
+  { href: '/progress', label: 'Progress', Icon: TrendingUp, match: ['/progress'] },
   { href: '/people', label: 'Family', Icon: Users, match: ['/people'] },
 ]
 
@@ -40,7 +41,7 @@ export function ParentNav() {
               key={href}
               href={href}
               aria-current={active ? 'page' : undefined}
-              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-[10px] text-[15px] font-semibold transition-colors duration-150 sm:flex-none sm:px-4"
+              className="flex h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[10px] text-[12px] font-semibold transition-colors duration-150 sm:h-11 sm:flex-none sm:flex-row sm:gap-2 sm:px-4 sm:text-[15px]"
               style={{ color: active ? 'var(--accent)' : 'var(--ink-2)', background: active ? 'rgba(45,212,191,0.12)' : 'transparent' }}
             >
               <Icon className="h-[18px] w-[18px]" aria-hidden />
