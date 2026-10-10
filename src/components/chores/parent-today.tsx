@@ -18,6 +18,7 @@ interface Task {
   reviewNote: string | null
   hasPhoto: boolean
   prompt: string | null
+  answers?: { q: string; a: string }[] | null
   template: { name: string; proof_type?: ProofType; photo_required?: boolean; cutoff_time?: string | null; required?: boolean; xp_value: number } | null
 }
 
@@ -252,7 +253,7 @@ export function ParentToday() {
                         style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}
                       >
                         <ProofIcon type={type} className="h-6 w-6" />
-                        {type === 'imessage_video' ? 'In Messages' : 'Says done'}
+                        {type === 'imessage_video' ? 'In Messages' : type === 'written' ? 'Wrote it' : 'Says done'}
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
@@ -278,6 +279,21 @@ export function ParentToday() {
                       )}
                     </div>
                   </div>
+
+                  {type === 'written' && t.answers?.length ? (
+                    <dl className="mt-3 space-y-2 rounded-[10px] p-3" style={{ background: 'var(--surface-2)' }}>
+                      {t.answers.map((x, i) => (
+                        <div key={i}>
+                          <dt className="text-[13px] font-semibold" style={{ color: 'var(--ink-3)' }}>
+                            {x.q}
+                          </dt>
+                          <dd className="whitespace-pre-wrap text-[15px]" style={{ color: 'var(--ink)' }}>
+                            “{x.a}”
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
 
                   {zoom === t.id && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -328,7 +344,7 @@ export function ParentToday() {
                         onClick={() => review.mutate({ id: t.id, action: 'approve' })}
                       >
                         {working ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-                        {type === 'imessage_video' ? 'Got the video, approve' : 'Approve'}
+                        {type === 'imessage_video' ? 'Got the video, approve' : type === 'written' ? 'Read it, approve' : 'Approve'}
                       </button>
                       <button type="button" className="btn btn-quiet" disabled={working} onClick={() => { setSendingBack(t.id); setNote('') }}>
                         Send back
@@ -407,17 +423,29 @@ export function ParentToday() {
                   const st = statusOf(t, data.nowMinutes, true)
                   const cutoff = t.template?.cutoff_time
                   return (
-                    <li key={t.id} className="flex items-center gap-3 px-4 py-3" style={{ borderColor: 'var(--line)' }}>
-                      <span style={{ color: 'var(--ink-3)' }}>
-                        <ProofIcon type={proofTypeOf(t.template)} className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-[15px]">{t.template?.name}</span>
-                      {cutoff && st === 'pending' && (
-                        <span className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
-                          by {formatClock(cutoff)}
+                    <li key={t.id} className="px-4 py-3" style={{ borderColor: 'var(--line)' }}>
+                      <div className="flex items-center gap-3">
+                        <span style={{ color: 'var(--ink-3)' }}>
+                          <ProofIcon type={proofTypeOf(t.template)} className="h-4 w-4" />
                         </span>
-                      )}
-                      <StatusPill status={st} />
+                        <span className="min-w-0 flex-1 truncate text-[15px]">{t.template?.name}</span>
+                        {cutoff && st === 'pending' && (
+                          <span className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+                            by {formatClock(cutoff)}
+                          </span>
+                        )}
+                        <StatusPill status={st} />
+                      </div>
+                      {t.answers?.length && (t.status === 'approved' || t.status === 'submitted') ? (
+                        <dl className="mt-2 space-y-1.5 pl-7">
+                          {t.answers.map((x, i) => (
+                            <div key={i}>
+                              <dt className="text-[13px]" style={{ color: 'var(--ink-3)' }}>{x.q}</dt>
+                              <dd className="whitespace-pre-wrap text-[14px]" style={{ color: 'var(--ink-2)' }}>“{x.a}”</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : null}
                     </li>
                   )
                 })}

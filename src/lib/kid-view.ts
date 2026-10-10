@@ -1,4 +1,4 @@
-import { countsTowardUnlock, isPastCutoff, proofTypeOf } from './proof.ts'
+import { countsTowardUnlock, countsWhenSent, isPastCutoff, proofTypeOf } from './proof.ts'
 import { timeToMinutes } from './dates.ts'
 
 // Display-only helpers for the kid home screen. None of this decides what
@@ -49,7 +49,7 @@ export function groupChores<T extends KidChore>(tasks: T[], nowMinutes: number):
   for (const t of tasks) {
     if (t.status === 'rejected') fix.push(t)
     else if (t.status === 'submitted') {
-      if (proofTypeOf(t.task_template) === 'photo') finished.push(t)
+      if (countsWhenSent(proofTypeOf(t.task_template))) finished.push(t)
       else waiting.push(t)
     } else if (t.status === 'approved') finished.push(t)
     else next.push(t) // pending, missed, anything unknown stays visible
@@ -74,7 +74,7 @@ export function progressCounts(tasks: KidChore[]): Progress {
   for (const t of req) {
     if (countsTowardUnlock(t)) done++
     if (t.status === 'pending' || t.status === 'rejected' || t.status === 'missed') toDo++
-    else if (t.status === 'submitted' && proofTypeOf(t.task_template) !== 'photo') waiting++
+    else if (t.status === 'submitted' && !countsWhenSent(proofTypeOf(t.task_template))) waiting++
   }
   return { total: req.length, toDo, waiting, done, allDone: req.length > 0 && done === req.length }
 }
@@ -109,6 +109,7 @@ export function isPrivateHost(url: string | null | undefined): boolean {
 export function actionLabel(type: string, status: string): string {
   if (status === 'rejected') return 'Redo'
   if (type === 'photo') return 'Take photo'
+  if (type === 'written') return 'Answer'
   if (type === 'imessage_video') return 'Sent it'
   return 'Done'
 }

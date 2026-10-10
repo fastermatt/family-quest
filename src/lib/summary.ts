@@ -12,6 +12,7 @@ export interface SummaryChore {
   cutoff: string | null
   photoUrl: string | null
   reviewNote: string | null
+  answers: { q: string; a: string }[] | null
 }
 
 export interface ChildSummary {
@@ -38,7 +39,7 @@ const DONE = new Set(['approved', 'submitted'])
 
 function shownForParents(c: SummaryChore) {
   // "Done" in the email means shown: approved, or a photo that is in.
-  return c.status === 'approved' || (c.status === 'submitted' && c.proofIcon === PROOF_META.photo.icon)
+  return c.status === 'approved' || (c.status === 'submitted' && (c.proofIcon === PROOF_META.photo.icon || c.proofIcon === PROOF_META.written.icon))
 }
 
 function minutesInTz(iso: string): number {
@@ -75,7 +76,7 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
     for (const kid of kids ?? []) {
       const { data: tasks } = await supabase
         .from('task_instances')
-        .select('status, photo_url, submitted_at, review_note, task_template:task_templates(*)')
+        .select('status, photo_url, submitted_at, review_note, answers, task_template:task_templates(*)')
         .eq('assigned_to', kid.id)
         .eq('due_date', date)
       const live = activeOnly(tasks)
@@ -103,6 +104,7 @@ export async function buildSummaries(supabase: SupabaseClient<any, any, any>, no
           cutoff,
           photoUrl,
           reviewNote: t.review_note,
+          answers: Array.isArray(t.answers) ? t.answers : null,
         })
       }
 
@@ -152,6 +154,7 @@ function statusLabel(c: SummaryChore): { text: string; color: string } {
     case 'approved':
       return { text: c.late ? 'Done (late)' : 'Done', color: '#15803d' }
     case 'submitted':
+      if (c.proofIcon === PROOF_META.written.icon) return { text: c.late ? 'Answered (late)' : 'Answered', color: '#15803d' }
       return c.proofIcon === PROOF_META.photo.icon
         ? { text: c.late ? 'Photo sent (late)' : 'Photo sent', color: '#15803d' }
         : { text: c.late ? 'Says done (late), confirm it' : 'Says done, confirm it', color: '#0f766e' }
@@ -169,7 +172,11 @@ export function summarySubject(s: FamilySummary): string {
 export function summaryText(s: FamilySummary): string {
   return s.children
     .map((c) => {
-      const lines = c.chores.map((ch) => `${shownForParents(ch) ? '✓' : DONE.has(ch.status) ? '…' : '✗'} ${ch.name} — ${statusLabel(ch).text}`)
+      const lines = c.chores.map(
+        (ch) =>
+          `${shownForParents(ch) ? '✓' : DONE.has(ch.status) ? '…' : '✗'} ${ch.name} — ${statusLabel(ch).text}` +
+          (ch.answers?.length ? ch.answers.map((x) => `\n    ${x.q} “${x.a}”`).join('') : '')
+      )
       const tr = c.training
         ? c.training.restDay
           ? '\n\nCalisthenics: rest day'
@@ -200,11 +207,14 @@ export function summaryHtml(s: FamilySummary, appUrl: string): string {
             : `<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;text-align:center;line-height:56px;font-size:22px">${ch.proofIcon}</div>`
           const by = ch.cutoff ? ` · due by ${formatClock(ch.cutoff)}` : ''
           const note = ch.reviewNote ? `<div style="color:#64748b;font-size:13px;margin-top:2px">“${esc(ch.reviewNote)}”</div>` : ''
+          const answers = (ch.answers ?? [])
+            .map((x) => `<div style="margin-top:6px"><div style="color:#64748b;font-size:12px">${esc(x.q)}</div><div style="color:#334155;font-size:14px">“${esc(x.a)}”</div></div>`)
+            .join('')
           return `<tr>
   <td style="padding:8px 12px 8px 0;vertical-align:top;width:56px">${thumb}</td>
   <td style="padding:8px 0;vertical-align:top">
     <div style="font-size:15px;color:#0f172a;font-weight:600">${esc(ch.name)}</div>
-    <div style="font-size:13px;color:${st.color};font-weight:600">${st.text}<span style="color:#64748b;font-weight:400">${by}</span></div>${note}
+    <div style="font-size:13px;color:${st.color};font-weight:600">${st.text}<span style="color:#64748b;font-weight:400">${by}</span></div>${note}${answers}
   </td></tr>`
         })
         .join('')

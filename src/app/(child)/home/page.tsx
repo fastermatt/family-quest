@@ -10,7 +10,7 @@ import { TrainingCard } from '@/components/kid/training-card'
 import { haptic, playChime, primeAudio, useMuted } from '@/components/kid/sound'
 import { ProofIcon, StatusPill, type StatusKey } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
-import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
+import { ANSWER_MIN_CHARS, DEFAULT_QUESTIONS, countsTowardUnlock, countsWhenSent, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
 import { actionLabel, choresLeft, groupChores, isCrunchTime, isPrivateHost, progressCounts, progressLine } from '@/lib/kid-view'
 import { shrinkPhoto } from '@/lib/image'
 
@@ -20,6 +20,7 @@ interface Chore {
   status: string
   reviewNote: string | null
   prompt: string | null
+  answers?: { q: string; a: string }[] | null
   task_template: {
     name: string
     proof_type?: ProofType
@@ -29,6 +30,7 @@ interface Chore {
     time_of_day?: string | null
     xp_value: number
     link_url?: string | null
+    questions?: string[] | null
   }
 }
 
@@ -59,7 +61,7 @@ function statusOf(c: Chore, nowMinutes: number): StatusKey {
   if (c.status === 'approved') return 'approved'
   if (c.status === 'rejected') return 'rejected'
   if (c.status === 'missed') return 'missed'
-  if (c.status === 'submitted') return proofTypeOf(c.task_template) === 'photo' ? 'shown' : 'submitted'
+  if (c.status === 'submitted') return countsWhenSent(proofTypeOf(c.task_template)) ? 'shown' : 'submitted'
   return isPastCutoff(c.task_template.cutoff_time, nowMinutes) ? 'late' : 'pending'
 }
 
@@ -67,7 +69,7 @@ const TODAY_KEY = ['child-today']
 
 function xpLabel(c: Chore) {
   const xp = c.task_template.xp_value
-  return proofTypeOf(c.task_template) === 'photo' ? `+${xp}` : `+${xp} when checked`
+  return countsWhenSent(proofTypeOf(c.task_template)) ? `+${xp}` : `+${xp} when checked`
 }
 
 interface RowProps {
@@ -83,11 +85,16 @@ interface RowProps {
   onStart: (c: Chore) => void
   onRetry: (c: Chore) => void
   onNewPhoto: (c: Chore) => void
+  formOpen?: boolean
+  draft?: string[]
+  onDraft?: (c: Chore, answers: string[]) => void
+  onSendAnswers?: (c: Chore) => void
+  onCloseForm?: () => void
   rowRef: (el: HTMLLIElement | null) => void
   actionRef: (el: HTMLButtonElement | null) => void
 }
 
-function ChoreRow({ c, nowMinutes, urgent, fresh, chip, sending, locked, error, hasFile, onStart, onRetry, onNewPhoto, rowRef, actionRef }: RowProps) {
+function ChoreRow({ c, nowMinutes, urgent, fresh, chip, sending, locked, error, hasFile, onStart, onRetry, onNewPhoto, formOpen, draft, onDraft, onSendAnswers, onCloseForm, rowRef, actionRef }: RowProps) {
   const type = proofTypeOf(c.task_template)
   const st = statusOf(c, nowMinutes)
   const open = c.status === 'pending' || c.status === 'rejected' || c.status === 'missed'
@@ -101,6 +108,7 @@ function ChoreRow({ c, nowMinutes, urgent, fresh, chip, sending, locked, error, 
   const showRetry = !!error && type === 'photo' && hasFile
   const label = hasLink && type === 'photo' ? 'Show finished work' : actionLabel(type, c.status)
   const name = c.task_template.name
+  const questions = c.task_template.questions?.length ? c.task_template.questions : DEFAULT_QUESTIONS
 
   const proofBtn = sending ? (
     <button type="button" className="btn btn-primary shrink-0" disabled aria-label={`Sending: ${name}`}>
@@ -161,7 +169,7 @@ function ChoreRow({ c, nowMinutes, urgent, fresh, chip, sending, locked, error, 
         </div>
         {!hasLink && proofBtn}
       </div>
-      {chip && <FloatChip text={chip} tone={type === 'photo' ? 'ok' : 'wait'} />}
+      {chip && <FloatChip text={chip} tone={countsWhenSent(type) ? 'ok' : 'wait'} />}
 
       {isRedo && (
         <p className="mt-2 rounded-[10px] px-3 py-2 text-[15px] font-semibold" style={{ color: 'var(--redo)', background: 'rgba(251,191,36,0.1)' }}>
@@ -187,6 +195,49 @@ function ChoreRow({ c, nowMinutes, urgent, fresh, chip, sending, locked, error, 
       {canAct && type === 'photo' && c.prompt && (
         <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
           Photo: {c.prompt.replace(/^\S+\s/, '')}
+        </p>
+      )}
+      {canAct && type === 'written' && formOpen && (
+        <form
+          className="mt-3 space-y-3 pl-[52px]"
+          onSubmit={(e) => {
+            e.preventDefault()
+            onSendAnswers?.(c)
+          }}
+        >
+          {questions.map((q, i) => (
+            <div key={i}>
+              <label htmlFor={`ans-${c.id}-${i}`} className="mb-1 block text-[15px] font-semibold">
+                {q}
+              </label>
+              <textarea
+                id={`ans-${c.id}-${i}`}
+                className="field min-h-[80px] resize-y"
+                value={draft?.[i] ?? ''}
+                onChange={(e) => onDraft?.(c, questions.map((_, j) => (j === i ? e.target.value : draft?.[j] ?? '')))}
+                maxLength={1000}
+                autoFocus={i === 0}
+              />
+            </div>
+          ))}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn btn-quiet" onClick={onCloseForm} disabled={sending}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={sending || locked || questions.some((_, i) => (draft?.[i] ?? '').trim().length < ANSWER_MIN_CHARS)}
+            >
+              {sending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+        </form>
+      )}
+      {canAct && type === 'written' && !formOpen && (
+        <p className="mt-2 pl-[52px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
+          Answer: {questions.join(' ')}
         </p>
       )}
       {canAct && type === 'imessage_video' && (
@@ -235,6 +286,8 @@ export default function ChildToday() {
   const [burst, setBurst] = useState(false)
   const [unlockFx, setUnlockFx] = useState(false)
   const [showFinished, setShowFinished] = useState(false)
+  const [openForm, setOpenForm] = useState<string | null>(null) // written chore being answered
+  const [drafts, setDrafts] = useState<Record<string, string[]>>({})
   const prevAll = useRef<boolean | null>(null)
   const reduced = useReducedMotion()
   const [muted, toggleMute] = useMuted()
@@ -261,11 +314,12 @@ export default function ChildToday() {
 
   // Nothing is celebrated or changed until the server has saved it.
   const submit = useMutation({
-    mutationFn: async ({ chore, file }: { chore: Chore; file?: File }) => {
+    mutationFn: async ({ chore, file, answers }: { chore: Chore; file?: File; answers?: string[] }) => {
       const form = new FormData()
       form.append('taskId', chore.id)
       if (chore.prompt) form.append('photoChallengePrompt', chore.prompt)
       if (file) form.append('photo', await shrinkPhoto(file))
+      if (answers) form.append('answers', JSON.stringify(answers))
       const res = await fetch('/api/submit-task', { method: 'POST', body: form })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error || 'That did not go through. Try again.')
@@ -277,6 +331,8 @@ export default function ChildToday() {
     },
     onSuccess: (_r, { chore }) => {
       setFiles(({ [chore.id]: _gone, ...rest }) => rest)
+      setDrafts(({ [chore.id]: _gone, ...rest }) => rest)
+      setOpenForm((cur) => (cur === chore.id ? null : cur))
       celebrate(chore)
       // Returned so "Sending…" stays until the refreshed list lands (no flash back).
       return qc.invalidateQueries({ queryKey: TODAY_KEY })
@@ -335,8 +391,18 @@ export default function ChildToday() {
   }
 
   const start = (c: Chore) => {
-    if (proofTypeOf(c.task_template) === 'photo') newPhoto(c)
-    else submitChore(c)
+    const type = proofTypeOf(c.task_template)
+    if (type === 'photo') newPhoto(c)
+    else if (type === 'written') {
+      // Open the answer form; on a redo start from what he wrote last time.
+      if (!drafts[c.id] && c.answers?.length) setDrafts((m) => ({ ...m, [c.id]: c.answers!.map((x) => x.a) }))
+      setOpenForm((cur) => (cur === c.id ? null : c.id))
+    } else submitChore(c)
+  }
+
+  const sendAnswers = (c: Chore) => {
+    primeAudio()
+    submit.mutate({ chore: c, answers: drafts[c.id] ?? [] })
   }
 
   const retry = (c: Chore) => {
@@ -426,6 +492,11 @@ export default function ChildToday() {
       onStart={start}
       onRetry={retry}
       onNewPhoto={newPhoto}
+      formOpen={openForm === c.id}
+      draft={drafts[c.id]}
+      onDraft={(ch, answers) => setDrafts((m) => ({ ...m, [ch.id]: answers }))}
+      onSendAnswers={sendAnswers}
+      onCloseForm={() => setOpenForm(null)}
       rowRef={(el) => {
         if (el) rowEls.current.set(c.id, el)
         else rowEls.current.delete(c.id)

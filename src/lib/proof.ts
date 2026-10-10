@@ -2,9 +2,9 @@ import { timeToMinutes } from './dates.ts'
 
 // How a chore is proven. The point of the app is that "done" means "shown",
 // not "claimed".
-export type ProofType = 'photo' | 'imessage_video' | 'check'
+export type ProofType = 'photo' | 'imessage_video' | 'check' | 'written'
 
-export const PROOF_TYPES: ProofType[] = ['photo', 'imessage_video', 'check']
+export const PROOF_TYPES: ProofType[] = ['photo', 'written', 'imessage_video', 'check']
 
 export const PROOF_META: Record<
   ProofType,
@@ -21,6 +21,12 @@ export const PROOF_META: Record<
     label: 'Video by iMessage',
     action: 'I sent the video',
     help: 'Record a video, text it to Dad, then tap the button.',
+  },
+  written: {
+    icon: '✍️',
+    label: 'Written answer',
+    action: 'Answer',
+    help: 'Answer the questions in your own words.',
   },
   check: {
     icon: '✓',
@@ -77,6 +83,34 @@ export function photoPrompt(t: { name: string; photo_hint?: string | null }): st
   return `📸 ${hint}`
 }
 
+/** Proof that exists the moment it is sent (a photo, written answers) counts right away. */
+export function countsWhenSent(type: ProofType): boolean {
+  return type === 'photo' || type === 'written'
+}
+
+export const DEFAULT_QUESTIONS = ['What did you do?', 'What did you learn?']
+
+/** Clean a chore's questions: 1 to 3 short, non-empty lines. */
+export function cleanQuestions(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : []
+  return list
+    .filter((q): q is string => typeof q === 'string')
+    .map((q) => q.replace(/\s+/g, ' ').trim().slice(0, 120))
+    .filter(Boolean)
+    .slice(0, 3)
+}
+
+export const ANSWER_MIN_CHARS = 10
+
+/** Pair questions with answers; returns an error a kid can understand. */
+export function cleanAnswers(questions: string[], raw: unknown): { answers?: { q: string; a: string }[]; error?: string } {
+  const list = Array.isArray(raw) ? raw : []
+  const answers = questions.map((q, i) => ({ q, a: typeof list[i] === 'string' ? list[i].replace(/\s+/g, ' ').trim().slice(0, 1000) : '' }))
+  const short = answers.find((x) => x.a.length < ANSWER_MIN_CHARS)
+  if (short) return { error: `Write a full sentence for: ${short.q}` }
+  return { answers }
+}
+
 export interface UnlockTask {
   id: string
   status: string
@@ -94,7 +128,7 @@ export interface UnlockTask {
 export function countsTowardUnlock(task: UnlockTask): boolean {
   if (task.task_template?.required === false) return true
   if (task.status === 'approved') return true
-  if (task.status === 'submitted') return proofTypeOf(task.task_template) === 'photo'
+  if (task.status === 'submitted') return countsWhenSent(proofTypeOf(task.task_template))
   return false
 }
 

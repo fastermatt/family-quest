@@ -1,14 +1,16 @@
-import { Camera, Check, CheckCheck, Clock, RotateCcw, Video, X } from 'lucide-react'
+import { Camera, Check, CheckCheck, Clock, NotebookPen, RotateCcw, Video, X } from 'lucide-react'
 import type { ProofType } from '@/lib/proof'
 
 export function ProofIcon({ type, className = 'h-5 w-5' }: { type: ProofType; className?: string }) {
   if (type === 'photo') return <Camera className={className} aria-hidden />
   if (type === 'imessage_video') return <Video className={className} aria-hidden />
+  if (type === 'written') return <NotebookPen className={className} aria-hidden />
   return <CheckCheck className={className} aria-hidden />
 }
 
 export const PROOF_SHORT: Record<ProofType, string> = {
   photo: 'Photo',
+  written: 'Written answer',
   imessage_video: 'Video by text',
   check: 'Parent confirms',
 }

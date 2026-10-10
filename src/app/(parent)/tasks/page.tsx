@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { AlertTriangle, ChevronDown, Lock, Loader2, Pencil, Plus, Power, Trash2, X } from 'lucide-react'
 import { ProofIcon, PROOF_SHORT } from '@/components/chores/status'
 import { formatClock } from '@/lib/dates'
-import { PROOF_TYPES, defaultPhotoHint, proofTypeOf, type ProofType } from '@/lib/proof'
+import { DEFAULT_QUESTIONS, PROOF_TYPES, defaultPhotoHint, proofTypeOf, type ProofType } from '@/lib/proof'
 
 interface Kid {
   id: string
@@ -23,6 +23,7 @@ interface Chore {
   cutoff_time?: string | null
   photo_hint?: string | null
   link_url?: string | null
+  questions?: string[] | null
   required?: boolean
   xp_value: number
   active: boolean
@@ -42,6 +43,7 @@ interface Draft {
   cutoff_time: string
   photo_hint: string
   link_url: string
+  questions: string[]
   required: boolean
   xp_value: number
   assigned_to: string[]
@@ -60,6 +62,7 @@ const OFTEN: { value: Draft['recurrence_type']; label: string }[] = [
 const PROOF_HELP: Record<ProofType, string> = {
   photo: 'He takes a photo in the app. Counts as soon as he sends it; you can send it back.',
   imessage_video: 'He texts you a video, then taps “Sent it”. You approve after you watch it.',
+  written: 'He answers your questions in the app. Counts as soon as he sends it; you read it and can send it back.',
   check: 'He taps done. It counts once you confirm.',
 }
 
@@ -101,6 +104,7 @@ function toDraft(c: Chore | null, kids: Kid[]): Draft {
       cutoff_time: '',
       photo_hint: '',
       link_url: '',
+      questions: [...DEFAULT_QUESTIONS],
       required: true,
       xp_value: 100,
       assigned_to: kids.length === 1 ? [kids[0].id] : [],
@@ -114,6 +118,7 @@ function toDraft(c: Chore | null, kids: Kid[]): Draft {
     cutoff_time: c.cutoff_time ? c.cutoff_time.slice(0, 5) : '',
     photo_hint: c.photo_hint ?? '',
     link_url: c.link_url ?? '',
+    questions: c.questions?.length ? c.questions : [...DEFAULT_QUESTIONS],
     required: c.required !== false,
     xp_value: c.xp_value,
     assigned_to: c.assigned_to,
@@ -169,13 +174,44 @@ function ChoreForm({
           {PROOF_TYPES.map((p) => (
             <button key={p} type="button" aria-pressed={d.proof_type === p} onClick={() => set('proof_type', p)}>
               <ProofIcon type={p} className="h-4 w-4" />
-              <span>{p === 'photo' ? 'Photo' : p === 'imessage_video' ? 'Video' : 'You check'}</span>
+              <span>{p === 'photo' ? 'Photo' : p === 'written' ? 'Written' : p === 'imessage_video' ? 'Video' : 'You check'}</span>
             </button>
           ))}
         </div>
         <p className="mt-2 text-[14px]" style={{ color: 'var(--ink-2)' }}>
           {PROOF_HELP[d.proof_type]}
         </p>
+        {d.proof_type === 'written' && (
+          <div className="mt-3 space-y-2">
+            <p className="text-[14px] font-semibold">Questions he answers</p>
+            {d.questions.map((q, i) => (
+              <div key={i} className="flex gap-2">
+                <input
+                  className="field flex-1"
+                  value={q}
+                  aria-label={`Question ${i + 1}`}
+                  onChange={(e) => set('questions', d.questions.map((x, j) => (j === i ? e.target.value : x)))}
+                  maxLength={120}
+                />
+                {d.questions.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-quiet !px-3"
+                    aria-label={`Remove question ${i + 1}`}
+                    onClick={() => set('questions', d.questions.filter((_, j) => j !== i))}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {d.questions.length < 3 && (
+              <button type="button" className="text-[14px] underline underline-offset-2" style={{ color: 'var(--accent)' }} onClick={() => set('questions', [...d.questions, ''])}>
+                Add a question
+              </button>
+            )}
+          </div>
+        )}
         {d.proof_type === 'photo' && (
           <div className="mt-3">
             <label htmlFor={`${id}-hint`} className="mb-1.5 block text-[14px] font-semibold">

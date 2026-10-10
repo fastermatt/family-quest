@@ -1,5 +1,5 @@
 import type { ProofType } from './proof.ts'
-import { PROOF_TYPES } from './proof.ts'
+import { PROOF_TYPES, cleanQuestions } from './proof.ts'
 
 export const RECURRENCE_TYPES = ['daily', 'weekdays', 'weekly', 'once'] as const
 export const TIMES_OF_DAY = ['anytime', 'morning', 'afternoon', 'evening'] as const
@@ -13,6 +13,7 @@ export interface ChoreInput {
   cutoff_time?: unknown
   photo_hint?: unknown
   link_url?: unknown
+  questions?: unknown
   required?: unknown
   xp_value?: unknown
   time_of_day?: unknown
@@ -81,6 +82,14 @@ export function cleanChore(input: ChoreInput, partial: boolean): { values?: Reco
         return { error: 'That link does not look right.' }
       }
     }
+  }
+
+  if (input.questions !== undefined) {
+    const qs = cleanQuestions(input.questions)
+    v.questions = qs.length ? qs : null
+  }
+  if (v.proof_type === 'written' && input.questions !== undefined && !(v.questions as string[] | null)?.length) {
+    return { error: 'Add at least one question for him to answer.' }
   }
 
   if (input.required !== undefined) v.required = input.required !== false

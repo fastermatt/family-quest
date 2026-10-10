@@ -31,7 +31,7 @@ export async function GET() {
   const { data: tasks } = kidIds.length
     ? await admin
         .from('task_instances')
-        .select('id, assigned_to, status, submitted_at, reviewed_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day, active)')
+        .select('id, assigned_to, status, submitted_at, reviewed_at, review_note, photo_url, photo_challenge_prompt, answers, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day, active)')
         .in('assigned_to', kidIds)
         .eq('due_date', date)
     : { data: [] }
@@ -40,7 +40,7 @@ export async function GET() {
   const { data: olderWaiting } = kidIds.length
     ? await admin
         .from('task_instances')
-        .select('id, assigned_to, status, due_date, submitted_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day)')
+        .select('id, assigned_to, status, due_date, submitted_at, review_note, photo_url, photo_challenge_prompt, answers, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day)')
         .in('assigned_to', kidIds)
         .eq('status', 'submitted')
         .lt('due_date', date)
@@ -88,6 +88,7 @@ export async function GET() {
       reviewNote: t.review_note,
       hasPhoto: !!t.photo_url,
       prompt: t.photo_challenge_prompt,
+      answers: t.answers ?? null,
       template: tpl,
     }
   }

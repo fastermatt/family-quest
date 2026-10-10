@@ -41,6 +41,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .upsert(next.map((assigned_to) => ({ template_id: id, assigned_to })), { onConflict: 'template_id,assigned_to', ignoreDuplicates: true })
   }
 
+  if (values.proof_type === 'written') {
+    // Same idea for written proof: a bare "done" today goes back so he can answer.
+    await admin
+      .from('task_instances')
+      .update({ status: 'pending', submitted_at: null })
+      .eq('template_id', id)
+      .eq('due_date', todayInTz())
+      .eq('status', 'submitted')
+      .is('answers', null)
+  }
+
   if (values.proof_type === 'photo') {
     // A stricter rule applies today too: a "done" with no photo goes back to his list.
     await admin

@@ -17,7 +17,7 @@ export async function GET() {
     admin.from('profiles').select('id, name, avatar_emoji, current_streak, xp_total').eq('id', me.id).single(),
     admin
       .from('task_instances')
-      .select('id, template_id, status, submitted_at, review_note, photo_url, photo_challenge_prompt, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day, active, link_url)')
+      .select('id, template_id, status, submitted_at, review_note, photo_url, photo_challenge_prompt, answers, task_template:task_templates(id, name, proof_type, photo_required, cutoff_time, required, xp_value, time_of_day, active, link_url, questions)')
       .eq('assigned_to', me.id)
       .eq('due_date', date),
     admin
@@ -40,6 +40,7 @@ export async function GET() {
     reviewNote: t.review_note,
     hasPhoto: !!t.photo_url,
     prompt: t.photo_challenge_prompt,
+    answers: t.answers ?? null,
     task_template: t.task_template,
   }))
 

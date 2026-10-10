@@ -223,3 +223,18 @@ test('4 PM crunch flags unfinished required chores only', () => {
   assert.equal(isCrunchTime(16 * 60, 2), true)
   assert.equal(isCrunchTime(20 * 60, 0), false)
 })
+
+import { cleanAnswers, cleanQuestions, countsWhenSent } from '../src/lib/proof.ts'
+
+test('written proof counts when sent and needs real answers', () => {
+  assert.equal(countsWhenSent('written'), true)
+  assert.equal(countsWhenSent('check'), false)
+  assert.equal(countsTowardUnlock({ id: 'x', status: 'submitted', task_template: { proof_type: 'written' } }), true)
+  assert.deepEqual(cleanQuestions(['  What did you read? ', '', 42, 'a', 'b', 'c']), ['What did you read?', 'a', 'b'])
+  const qs = ['What did you read?', 'What did you learn?']
+  assert.ok(cleanAnswers(qs, ['John 3', 'that God loves the world']).error, 'too short')
+  assert.ok(cleanAnswers(qs, ['John chapter 3']).error, 'missing second')
+  const ok = cleanAnswers(qs, ['John chapter 3  ', 'God loved the world so he sent Jesus'])
+  assert.equal(ok.answers?.[0].a, 'John chapter 3')
+  assert.equal(ok.answers?.[1].q, 'What did you learn?')
+})

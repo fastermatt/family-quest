@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { proofTypeOf } from '@/lib/proof'
+import { DEFAULT_QUESTIONS, cleanAnswers, cleanQuestions, proofTypeOf } from '@/lib/proof'
 
 // Resolve the calling profile (same pattern as /api/tasks)
 async function resolveProfileId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
@@ -100,6 +100,17 @@ export async function POST(req: NextRequest) {
 
   // The server decides what counts as proof, not the browser.
   const hasPhoto = !!photo && photo.size > 0
+  let answers: { q: string; a: string }[] | null = null
+  if (proofType === 'written') {
+    let raw: unknown = null
+    try {
+      raw = JSON.parse((formData.get('answers') as string | null) ?? 'null')
+    } catch {}
+    const questions = cleanQuestions(template?.questions).length ? cleanQuestions(template?.questions) : DEFAULT_QUESTIONS
+    const checked = cleanAnswers(questions, raw)
+    if (checked.error) return NextResponse.json({ error: checked.error }, { status: 400 })
+    answers = checked.answers!
+  }
   if (proofType === 'photo' && !hasPhoto) {
     return NextResponse.json({ error: 'This chore needs a photo' }, { status: 400 })
   }
@@ -153,6 +164,7 @@ export async function POST(req: NextRequest) {
     review_note: null,
   }
 
+  if (answers) updateData.answers = answers
   if (photoUrl) {
     updateData.photo_url = photoUrl
   }
