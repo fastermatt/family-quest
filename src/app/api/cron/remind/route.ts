@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminClient } from '@/lib/session'
-import { todayInTz } from '@/lib/dates'
+import { todayInTz, zonedParts } from '@/lib/dates'
 import { activeOnly } from '@/lib/proof'
 import { parentIds, sendToProfiles } from '@/lib/push'
 import {
@@ -17,6 +17,10 @@ export const dynamic = 'force-dynamic'
 
 const SLOTS = ['morning', 'afternoon', 'four', 'evening']
 
+// The scheduler runs in UTC and fires at both the summer and winter UTC times.
+// Only the run that lands in the right Denver hour does anything.
+const SLOT_HOUR: Record<string, number> = { morning: 7, afternoon: 15, four: 16, evening: 20 }
+
 async function run(req: NextRequest) {
   const secret = process.env.PUSH_CRON_SECRET
   if (!secret) return NextResponse.json({ error: 'PUSH_CRON_SECRET is not set.' }, { status: 503 })
@@ -26,6 +30,12 @@ async function run(req: NextRequest) {
   const slot = req.nextUrl.searchParams.get('slot') ?? ''
   if (!SLOTS.includes(slot)) {
     return NextResponse.json({ error: 'slot must be morning, afternoon, four or evening.' }, { status: 400 })
+  }
+
+  const force = req.nextUrl.searchParams.get('force') === '1'
+  const denverHour = Math.floor(zonedParts(new Date()).minutes / 60)
+  if (!force && denverHour !== SLOT_HOUR[slot]) {
+    return NextResponse.json({ ok: true, slot, skipped: 'not this hour in Denver', denverHour })
   }
 
   const admin = adminClient()
