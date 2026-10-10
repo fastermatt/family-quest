@@ -39,7 +39,7 @@ const DONE = new Set(['approved', 'submitted'])
 
 function shownForParents(c: SummaryChore) {
   // "Done" in the email means shown: approved, or a photo that is in.
-  return c.status === 'approved' || (c.status === 'submitted' && (c.proofIcon === PROOF_META.photo.icon || c.proofIcon === PROOF_META.written.icon))
+  return c.status === 'approved' || c.status === 'excused' || (c.status === 'submitted' && (c.proofIcon === PROOF_META.photo.icon || c.proofIcon === PROOF_META.written.icon))
 }
 
 function minutesInTz(iso: string): number {
@@ -160,6 +160,8 @@ function statusLabel(c: SummaryChore): { text: string; color: string } {
         : { text: c.late ? 'Says done (late), confirm it' : 'Says done, confirm it', color: '#0f766e' }
     case 'rejected':
       return { text: 'Sent back to redo', color: '#b45309' }
+    case 'excused':
+      return { text: 'Excused by a parent', color: '#64748b' }
     default:
       return { text: 'Not done', color: '#b91c1c' }
   }

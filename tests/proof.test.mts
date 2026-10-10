@@ -238,3 +238,10 @@ test('written proof counts when sent and needs real answers', () => {
   assert.equal(ok.answers?.[0].a, 'John chapter 3')
   assert.equal(ok.answers?.[1].q, 'What did you learn?')
 })
+
+test('excused counts as done and lands in Finished', () => {
+  assert.equal(countsTowardUnlock({ id: 'e', status: 'excused', task_template: { proof_type: 'check' } }), true)
+  const g = groupChores([{ id: 'e', status: 'excused', task_template: {} }], 600)
+  assert.equal(g.finished.length, 1)
+  assert.equal(choresLeft([{ id: 'e', status: 'excused', task_template: { required: true } }]), 0)
+})

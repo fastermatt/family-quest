@@ -51,7 +51,7 @@ export function groupChores<T extends KidChore>(tasks: T[], nowMinutes: number):
     else if (t.status === 'submitted') {
       if (countsWhenSent(proofTypeOf(t.task_template))) finished.push(t)
       else waiting.push(t)
-    } else if (t.status === 'approved') finished.push(t)
+    } else if (t.status === 'approved' || t.status === 'excused') finished.push(t)
     else next.push(t) // pending, missed, anything unknown stays visible
   }
   return { fix, next: sortDoNext(next, nowMinutes), waiting, finished }

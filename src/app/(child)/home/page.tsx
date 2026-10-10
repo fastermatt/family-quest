@@ -61,6 +61,7 @@ function statusOf(c: Chore, nowMinutes: number): StatusKey {
   if (c.status === 'approved') return 'approved'
   if (c.status === 'rejected') return 'rejected'
   if (c.status === 'missed') return 'missed'
+  if (c.status === 'excused') return 'excused'
   if (c.status === 'submitted') return countsWhenSent(proofTypeOf(c.task_template)) ? 'shown' : 'submitted'
   return isPastCutoff(c.task_template.cutoff_time, nowMinutes) ? 'late' : 'pending'
 }

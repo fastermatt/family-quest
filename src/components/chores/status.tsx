@@ -1,4 +1,4 @@
-import { Camera, Check, CheckCheck, Clock, NotebookPen, RotateCcw, Video, X } from 'lucide-react'
+import { Camera, Check, CheckCheck, Clock, MinusCircle, NotebookPen, RotateCcw, Video, X } from 'lucide-react'
 import type { ProofType } from '@/lib/proof'
 
 export function ProofIcon({ type, className = 'h-5 w-5' }: { type: ProofType; className?: string }) {
@@ -23,6 +23,7 @@ const STATUS = {
   approved: { label: 'Done', color: 'var(--ok)', Icon: Check },
   rejected: { label: 'Sent back', color: 'var(--redo)', Icon: RotateCcw },
   missed: { label: 'Missed', color: 'var(--miss)', Icon: X },
+  excused: { label: 'Excused', color: 'var(--ink-3)', Icon: MinusCircle },
 } as const
 
 export type StatusKey = keyof typeof STATUS

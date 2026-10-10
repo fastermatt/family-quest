@@ -63,6 +63,7 @@ function statusOf(t: Task, nowMinutes: number, isToday: boolean): StatusKey {
   if (t.status === 'approved') return 'approved'
   if (t.status === 'rejected') return 'rejected'
   if (t.status === 'missed') return 'missed'
+  if (t.status === 'excused') return 'excused'
   if (t.status === 'submitted') return 'submitted'
   return isToday && isPastCutoff(t.template?.cutoff_time, nowMinutes) ? 'late' : 'pending'
 }
@@ -137,6 +138,14 @@ export function ParentToday() {
   })
 
   // Normally the 5am job does this; this is the manual fallback.
+  const [confirmExcuse, setConfirmExcuse] = useState<string | null>(null)
+  const excuse = useMutation({
+    mutationFn: ({ id, undo }: { id: string; undo?: boolean }) => post(`/api/parent/excuse/${id}`, undo ? { undo: true } : {}),
+    onMutate: () => setError(null),
+    onSuccess: () => setConfirmExcuse(null),
+    onError: (e) => setError(e instanceof Error ? e.message : 'That did not save.'),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['parent-overview'] }),
+  })
   const makeList = useMutation({
     mutationFn: () => post('/api/generate-task-instances', {}),
     onError: (e) => setError(e instanceof Error ? e.message : 'Could not make the list.'),
@@ -436,6 +445,45 @@ export function ParentToday() {
                         )}
                         <StatusPill status={st} />
                       </div>
+                      {(t.status === 'pending' || t.status === 'rejected') &&
+                        (confirmExcuse === t.id ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-[14px]">
+                            <span style={{ color: 'var(--ink-2)' }}>Excuse it for today? It counts as done.</span>
+                            <button
+                              type="button"
+                              className="btn btn-primary !min-h-9 !px-3 text-[14px]"
+                              disabled={excuse.isPending}
+                              onClick={() => excuse.mutate({ id: t.id })}
+                            >
+                              Yes, excuse
+                            </button>
+                            <button type="button" className="btn btn-quiet !min-h-9 !px-3 text-[14px]" onClick={() => setConfirmExcuse(null)}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="mt-1 min-h-9 pl-7 text-[13px] underline underline-offset-2"
+                            style={{ color: 'var(--ink-3)' }}
+                            onClick={() => setConfirmExcuse(t.id)}
+                            aria-label={`Excuse ${t.template?.name ?? 'chore'} for today`}
+                          >
+                            Excuse today
+                          </button>
+                        ))}
+                      {t.status === 'excused' && (
+                        <button
+                          type="button"
+                          className="mt-1 min-h-9 pl-7 text-[13px] underline underline-offset-2"
+                          style={{ color: 'var(--ink-3)' }}
+                          disabled={excuse.isPending}
+                          onClick={() => excuse.mutate({ id: t.id, undo: true })}
+                          aria-label={`Undo excuse for ${t.template?.name ?? 'chore'}`}
+                        >
+                          Undo excuse
+                        </button>
+                      )}
                       {t.answers?.length && (t.status === 'approved' || t.status === 'submitted') ? (
                         <dl className="mt-2 space-y-1.5 pl-7">
                           {t.answers.map((x, i) => (

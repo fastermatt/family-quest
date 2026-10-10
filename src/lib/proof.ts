@@ -127,7 +127,7 @@ export interface UnlockTask {
  */
 export function countsTowardUnlock(task: UnlockTask): boolean {
   if (task.task_template?.required === false) return true
-  if (task.status === 'approved') return true
+  if (task.status === 'approved' || task.status === 'excused') return true
   if (task.status === 'submitted') return countsWhenSent(proofTypeOf(task.task_template))
   return false
 }
