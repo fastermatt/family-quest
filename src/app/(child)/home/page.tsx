@@ -566,7 +566,7 @@ export default function ChildToday() {
           </p>
           {!allDone && (
             <p className="mt-0.5 text-[13px]" style={{ color: 'var(--ink-3)' }}>
-              Photos count when sent. Video and check-off chores count after Mom or Dad checks them.
+              Photos and written answers count when sent. Video and check-off chores count after Mom or Dad checks them.
             </p>
           )}
           <div className="mt-2 flex gap-1" aria-hidden>
