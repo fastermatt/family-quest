@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { bad, requireParent } from '@/lib/api-auth'
+import { bestEffort, sendToProfiles } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: task } = await admin
     .from('task_instances')
-    .select('id, status, assigned_to, due_date, task_template:task_templates(xp_value), child:profiles!task_instances_assigned_to_fkey(id, family_id)')
+    .select('id, status, assigned_to, due_date, task_template:task_templates(xp_value, name), child:profiles!task_instances_assigned_to_fkey(id, family_id)')
     .eq('id', id)
     .single()
   if (!task) return bad('Chore not found.', 404)
@@ -36,6 +37,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // The reward is locked again; drop his open ask so he can ask once it is redone.
     await admin.from('privilege_requests').delete().eq('requested_by', child.id).eq('status', 'pending')
+    const rtpl = Array.isArray(task.task_template) ? task.task_template[0] : task.task_template
+    await bestEffort(
+      sendToProfiles(admin, [child.id], {
+        title: `Sent back: ${rtpl?.name ?? 'a chore'}`,
+        body: note || 'Take another look.',
+        url: '/home',
+        tag: `rejected-${id}`,
+      })
+    )
     return NextResponse.json({ ok: true, status: 'rejected' })
   }
 

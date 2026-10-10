@@ -3,6 +3,8 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { DEFAULT_QUESTIONS, cleanAnswers, cleanQuestions, proofTypeOf } from '@/lib/proof'
+import { bestEffort, parentIds, sendToProfiles } from '@/lib/push'
+import { submitBody } from '@/lib/push-copy'
 
 // Resolve the calling profile (same pattern as /api/tasks)
 async function resolveProfileId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
@@ -156,7 +158,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Update the task instance
-  const updateData: Record<string, any> = {
+  const updateData: Record<string, unknown> = {
     status: 'submitted',
     submitted_at: new Date().toISOString(),
     // Clear any earlier rejection so the reviewer sees a clean resubmission.
@@ -182,6 +184,19 @@ export async function POST(req: NextRequest) {
     console.error('Task update error:', updateError)
     return NextResponse.json({ error: 'Failed to submit task' }, { status: 500 })
   }
+
+  // Tell the parents (best effort; never blocks or fails the submit).
+  await bestEffort(
+    (async () => {
+      const { data: kid } = await supabaseAdmin.from('profiles').select('name').eq('id', profileId).maybeSingle()
+      await sendToProfiles(supabaseAdmin, await parentIds(supabaseAdmin, familyId), {
+        title: `${kid?.name ?? 'Your kid'} sent: ${template?.name ?? 'a chore'}`,
+        body: submitBody(proofType),
+        url: '/dashboard',
+        tag: `submit-${taskId}`,
+      })
+    })()
+  )
 
   return NextResponse.json({ ok: true, photoUrl })
 }
