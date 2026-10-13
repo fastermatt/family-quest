@@ -3,13 +3,13 @@ import { adminClient } from '@/lib/session'
 import { zonedParts } from '@/lib/dates'
 import { activeOnly } from '@/lib/proof'
 import { scheduledReminderPayload } from '@/lib/reminder-schedule'
-import { sendToProfilesDetailed } from '@/lib/push'
+import { sendToProfiles } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.PUSH_CRON_SECRET
+  const secret = process.env.PUSH_CRON_SECRET || process.env.CRON_SECRET
   if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   const now = zonedParts()
   const time = `${String(Math.floor(now.minutes / 60)).padStart(2, '0')}:${String(now.minutes % 60).padStart(2, '0')}`
@@ -29,9 +29,9 @@ export async function POST(req: NextRequest) {
     if (claimError?.code === '23505') { skipped++; continue }
     if (claimError) { failed++; continue }
     const chores = activeOnly(data).map(r => ({ name: r.task_template?.name ?? 'Chore', required: r.task_template?.required !== false, status: r.status }))
-    const result = await sendToProfilesDetailed(admin, [schedule.child_id], scheduledReminderPayload(child.name, chores, `custom-${schedule.id}-${now.date}`))
-    accepted += result.accepted
-    if (!result.accepted) failed++
+    const result = await sendToProfiles(admin, [schedule.child_id], scheduledReminderPayload(child.name, chores, `custom-${schedule.id}-${now.date}`))
+    accepted += result
+    if (!result) failed++
   }
   return NextResponse.json({ ok: true, date: now.date, time, accepted, failed, skipped })
 }
