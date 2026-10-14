@@ -1,3 +1,4 @@
+import { timeoutFetch } from '@/lib/request-timeout'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -7,6 +8,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: { fetch: timeoutFetch(4000) },
       cookies: {
         getAll() {
           return cookieStore.getAll()

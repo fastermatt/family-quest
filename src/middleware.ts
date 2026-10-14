@@ -1,13 +1,25 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { middlewareAccess } from './lib/middleware-access'
+import { timeoutFetch, withTimeout } from './lib/request-timeout'
+
+function denied(request: NextRequest) {
+  return request.nextUrl.pathname.startsWith('/api/')
+    ? NextResponse.json({ error: 'Please sign in again.' }, { status: 401 })
+    : NextResponse.redirect(new URL('/family-login', request.url))
+}
 
 export async function middleware(request: NextRequest) {
+  const access = middlewareAccess(request.nextUrl.pathname, request.cookies.getAll())
+  if (access === 'pass') return NextResponse.next({ request })
+  if (access === 'deny') return denied(request)
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: { fetch: timeoutFetch(4000) },
       cookies: {
         getAll() {
           return request.cookies.getAll()
@@ -23,56 +35,16 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const { pathname } = request.nextUrl
-
-  const isPublic =
-    pathname === '/login' ||
-    pathname === '/family-login' ||
-    pathname === '/child-login' ||
-    pathname.startsWith('/auth/') ||
-    pathname === '/family/setup' ||
-    pathname.startsWith('/api/join/') ||
-    pathname.startsWith('/api/cron/') || // each cron route checks its own Bearer secret
-    pathname === '/api/pin-login' ||
-    pathname === '/setup-pin' ||
-    pathname === '/api/setup-pin' ||
-    pathname === '/api/logout' ||
-    pathname === '/api/report-problem' ||
-    pathname === '/api/generate-task-instances' || // checks parent session or Bearer secret itself
-    pathname === '/api/family-members' ||
-    pathname === '/api/set-child-token'
-
-  if (!user && !isPublic) {
-    // Allow access if user has a persistent profile_token cookie
-    const profileToken = request.cookies.get('profile_token')?.value
-    if (!profileToken) {
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 })
-      }
-      return NextResponse.redirect(new URL('/family-login', request.url))
-    }
-    // Has a token — let the layout validate it
+  try {
+    const result = await withTimeout(supabase.auth.getUser(), 6000)
+    if (result.error && (result.error.status === 504 || result.error.name === 'AuthRetryableFetchError')) throw result.error
+    if (!result.data.user) return denied(request)
     return supabaseResponse
+  } catch {
+    // Keep protected pages closed, preserve session cookies, and allow a retry.
+    return NextResponse.json({ error: 'Sign-in is temporarily unavailable. Please try again shortly.' }, { status: 503, headers: { 'Retry-After': '10', 'Cache-Control': 'no-store' } })
   }
 
-  if (user && pathname === '/login') {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    // New user with no profile yet — send to family setup
-    if (!profile) {
-      return NextResponse.redirect(new URL('/family/setup', request.url))
-    }
-
-    const dest = profile.role === 'child' ? '/home' : '/dashboard'
-    return NextResponse.redirect(new URL(dest, request.url))
-  }
-
-  return supabaseResponse
 }
 
 export const config = {

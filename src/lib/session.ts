@@ -1,3 +1,4 @@
+import { timeoutFetch } from '@/lib/request-timeout'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
@@ -11,7 +12,8 @@ export interface SessionProfile {
 export function adminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { global: { fetch: timeoutFetch(6000) } }
   )
 }
 

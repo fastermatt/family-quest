@@ -1,3 +1,4 @@
+import { timeoutFetch } from '@/lib/request-timeout'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
@@ -9,7 +10,8 @@ import { cookies } from 'next/headers'
 export async function GET(req: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { global: { fetch: timeoutFetch(6000) } }
   )
 
   let familyId: string | null = null
