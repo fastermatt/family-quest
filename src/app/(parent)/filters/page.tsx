@@ -45,6 +45,20 @@ export default function FiltersPage() {
   })
   const refresh = () => qc.invalidateQueries({ queryKey: ['filters'] })
 
+  const usage = useQuery<{ days: number; uploads: number; lastUpload: string | null; sites: { site: string; n: number; examples: string[]; status: string }[] }>({
+    queryKey: ['usage'],
+    queryFn: async () => {
+      const res = await fetch('/api/parent/usage?days=7')
+      if (!res.ok) throw new Error('Could not load activity.')
+      return res.json()
+    },
+  })
+  const quick = useMutation({
+    mutationFn: (v: { kind: Kind; domain: string }) => send('/api/parent/filters', 'POST', v),
+    onSuccess: () => { setError(null); refresh(); qc.invalidateQueries({ queryKey: ['usage'] }) },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not save.'),
+  })
+
   const [code, setCode] = useState('')
   const devices = useQuery<{ devices: Device[] }>({
     queryKey: ['devices'],
@@ -201,6 +215,37 @@ export default function FiltersPage() {
         Category lists from the community are not loaded yet in this version; apps and sites with a fixed list work in the preview only.
         YouTube is never blocked by a category.
       </p>
+
+      <section className="space-y-2" aria-labelledby="seen-h">
+        <h2 id="seen-h" className="text-[16px] font-semibold">Seen this week</h2>
+        {(usage.data?.sites.length ?? 0) === 0 ? (
+          <p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>
+            Nothing yet. Once a linked PC is watching, the busiest sites show up here so you can allow or block them with one tap.
+          </p>
+        ) : (
+          <>
+            {usage.data!.sites.slice(0, 30).map((s) => (
+              <div key={s.site} className="row space-y-2 p-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{s.site}</span>
+                  <span className="text-[13px]" style={{ color: s.status === 'blocked' ? 'var(--miss)' : 'var(--ink-3)' }}>{s.status}</span>
+                  <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>{s.n}</span>
+                </div>
+                <div className="flex gap-2">
+                  {(['allow', 'deny', 'school'] as Kind[]).map((k) => (
+                    <button key={k} type="button" className="btn btn-quiet h-11 flex-1 px-2 text-[14px]" disabled={quick.isPending} onClick={() => quick.mutate({ kind: k, domain: s.site })}>
+                      {k === 'deny' ? 'Block' : k === 'allow' ? 'Allow' : 'School'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              Numbers are how often a site showed up in the PC&apos;s checks, not exact visits. Windows background traffic is hidden.
+            </p>
+          </>
+        )}
+      </section>
 
       <section className="space-y-2" aria-labelledby="rules-h">
         <h2 id="rules-h" className="text-[16px] font-semibold">Your rules</h2>

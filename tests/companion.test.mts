@@ -199,3 +199,61 @@ test('cleanInventory keeps known fields only and trims', () => {
   assert.equal(cleanInventory({ accounts: [{ isAdmin: 'yes' }] }).accounts[0].isAdmin, false)
   assert.equal(cleanInventory({ accounts: Array(30).fill({ name: 'x' }) }).accounts.length, 10)
 })
+
+import { aggregateUsage, cleanUsage, isNoise, siteOf, MAX_DOMAINS_PER_UPLOAD } from '../src/lib/companion/usage.ts'
+
+const NOW = new Date('2026-10-22T20:00:00Z')
+const good = { periodStart: '2026-10-22T19:00:00Z', periodEnd: '2026-10-22T20:00:00Z' }
+
+test('cleanUsage normalizes, merges and drops junk domains', () => {
+  const r = cleanUsage(
+    { ...good, domains: [{ d: 'WWW.Example.com', n: 3 }, { d: 'example.com', n: 2 }, { d: '10.0.0.1', n: 9 }, { d: 'localhost', n: 4 }, { d: 'a.net', n: 0 }, { d: 'b.net', n: 1.9 }, 'x', null], other: 5 },
+    NOW
+  )
+  assert.equal(r.error, undefined)
+  assert.deepEqual(r.values!.domains, [{ d: 'example.com', n: 5 }, { d: 'b.net', n: 1 }])
+  assert.equal(r.values!.other, 5)
+  assert.equal(r.values!.total, 11)
+})
+
+test('cleanUsage keeps the top 200 and folds the rest into other', () => {
+  const domains = Array.from({ length: 300 }, (_, i) => ({ d: `site${i}.com`, n: 300 - i }))
+  const r = cleanUsage({ ...good, domains }, NOW)
+  assert.equal(r.values!.domains.length, MAX_DOMAINS_PER_UPLOAD)
+  assert.equal(r.values!.domains[0].d, 'site0.com')
+  const folded = domains.slice(200).reduce((s, x) => s + x.n, 0)
+  assert.equal(r.values!.other, folded)
+  assert.equal(r.values!.total, domains.reduce((s, x) => s + x.n, 0))
+})
+
+test('cleanUsage rejects bad time ranges', () => {
+  const t = (o: object) => cleanUsage({ domains: [], ...o }, NOW).error
+  assert.ok(t({}))
+  assert.ok(t({ periodStart: 'nope', periodEnd: 'nope' }))
+  assert.ok(t({ periodStart: '2026-10-22T20:00:00Z', periodEnd: '2026-10-22T19:00:00Z' })) // backwards
+  assert.ok(t({ periodStart: '2026-10-20T00:00:00Z', periodEnd: '2026-10-22T00:00:00Z' })) // longer than a day
+  assert.ok(t({ periodStart: '2026-10-22T19:00:00Z', periodEnd: '2026-10-23T20:00:00Z' })) // future
+  assert.ok(t({ periodStart: '2026-09-01T00:00:00Z', periodEnd: '2026-09-01T01:00:00Z' })) // too old
+  assert.equal(t(good), undefined)
+  assert.equal(cleanUsage(null, NOW).error, 'Bad time range.')
+})
+
+test('siteOf and noise', () => {
+  assert.equal(siteOf('cdn.static.example.com'), 'example.com')
+  assert.equal(siteOf('example.com'), 'example.com')
+  assert.equal(siteOf('news.bbc.co.uk'), 'bbc.co.uk')
+  assert.equal(isNoise('www.msftconnecttest.com'), true)
+  assert.equal(isNoise('vortex.data.microsoft.com'), true)
+  assert.equal(isNoise('example.com'), false)
+})
+
+test('aggregateUsage groups by site, hides noise, busiest first', () => {
+  const sites = aggregateUsage([
+    { domains: [{ d: 'a.tiktok.com', n: 5 }, { d: 'b.tiktok.com', n: 2 }, { d: 'khanacademy.org', n: 4 }, { d: 'x.msftconnecttest.com', n: 99 }] },
+    { domains: [{ d: 'a.tiktok.com', n: 1 }, { d: 'ixl.com', n: 4 }] },
+  ])
+  assert.deepEqual(sites.map((s) => [s.site, s.n]), [['tiktok.com', 8], ['ixl.com', 4], ['khanacademy.org', 4]])
+  assert.deepEqual(sites[0].examples, ['a.tiktok.com', 'b.tiktok.com'])
+  assert.equal(aggregateUsage([{ domains: [{ d: 'x.msftconnecttest.com', n: 1 }] }], { includeNoise: true }).length, 1)
+  assert.deepEqual(aggregateUsage([]), [])
+})

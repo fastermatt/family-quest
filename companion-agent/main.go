@@ -3,6 +3,7 @@
 //
 //	chorezap-agent.exe            link this PC (shows a code), then report
 //	chorezap-agent.exe report     send a fresh report
+//	chorezap-agent.exe watch      note which sites the PC looks up; send a summary hourly
 //	chorezap-agent.exe status     show whether this PC is linked
 //	chorezap-agent.exe inventory  print the report without sending it
 //	chorezap-agent.exe unlink     forget the link on this PC
@@ -39,6 +40,13 @@ func main() {
 		fail(link(*server))
 	case "report":
 		fail(report())
+	case "watch":
+		fs := flag.NewFlagSet("watch", flag.ExitOnError)
+		sampleEvery := fs.Duration("sample-every", 5*time.Minute, "how often to look at the DNS cache")
+		flushEvery := fs.Duration("flush-every", time.Hour, "how often to send a summary")
+		localOnly := fs.Bool("local-only", false, "keep the summary on this PC; upload nothing")
+		_ = fs.Parse(flag.Args()[1:])
+		fail(watch(watchOpts{sampleEvery: *sampleEvery, flushEvery: *flushEvery, localOnly: *localOnly}))
 	case "status":
 		cfg, err := loadConfig()
 		if err != nil {
@@ -53,7 +61,7 @@ func main() {
 		fail(removeConfig())
 		fmt.Println("Unlinked on this PC. Also remove it in ChoreZap (Filters > Your PCs).")
 	default:
-		fmt.Println("Unknown command. Try: link, report, status, inventory, unlink")
+		fmt.Println("Unknown command. Try: link, report, watch, status, inventory, unlink")
 		os.Exit(2)
 	}
 }
