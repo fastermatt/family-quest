@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // The Windows companion calls these with its own device token (checked in each route).
+  // Skip the Supabase Auth lookup entirely: a PC polling must never add auth load.
+  if (request.nextUrl.pathname.startsWith('/api/companion/')) return NextResponse.next()
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(

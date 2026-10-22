@@ -3,12 +3,13 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { ClipboardCheck, ListChecks, LogOut, TrendingUp, Users } from 'lucide-react'
+import { ClipboardCheck, ListChecks, LogOut, ShieldCheck, TrendingUp, Users } from 'lucide-react'
 
 const LINKS = [
   { href: '/dashboard', label: 'Today', Icon: ClipboardCheck, match: ['/dashboard', '/review'] },
   { href: '/tasks', label: 'Chores', Icon: ListChecks, match: ['/tasks'] },
   { href: '/progress', label: 'Progress', Icon: TrendingUp, match: ['/progress'] },
+  { href: '/filters', label: 'Filters', Icon: ShieldCheck, match: ['/filters'] },
   { href: '/people', label: 'Family', Icon: Users, match: ['/people'] },
 ]
 
