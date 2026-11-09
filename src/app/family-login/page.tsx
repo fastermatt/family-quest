@@ -33,7 +33,7 @@ export default function FamilyLoginPage() {
 
   // Already signed in on this device? Go straight to the right screen.
   useEffect(() => {
-    fetch('/api/active-profile')
+    fetch('/api/active-profile', { signal: AbortSignal.timeout(8000) })
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => {
         if (p?.role) router.replace(p.role === 'child' ? '/home' : '/dashboard')
@@ -50,7 +50,7 @@ export default function FamilyLoginPage() {
       remembered = new URLSearchParams(window.location.search).get('family') || localStorage.getItem('family_id')
     } catch {}
     const url = remembered ? `/api/family-members?family_id=${encodeURIComponent(remembered)}` : '/api/family-members'
-    fetch(url)
+    fetch(url, { signal: AbortSignal.timeout(8000) })
       .then(r => {
         if (r.status === 404) { setNeedsFamilyCode(true); setLoading(false); return null }
         return r.json()
@@ -64,7 +64,7 @@ export default function FamilyLoginPage() {
           setLoading(false)
         }
       })
-      .catch(() => setLoading(false))
+      .catch(() => { setErrorMsg('The family could not load. Please reload and try again.'); setScreen('error'); setLoading(false) })
   }, [])
 
   const handleSelect = (member: FamilyMember) => {

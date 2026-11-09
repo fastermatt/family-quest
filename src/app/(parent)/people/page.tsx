@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { ChildReminderSchedules } from '@/components/parent/reminder-schedules'
 import { AlertTriangle, Check, Copy, Eye, KeyRound, Link2, Loader2, Mail, MessageSquare } from 'lucide-react'
 
 interface Member {
@@ -288,6 +289,8 @@ export default function PeoplePage() {
                 Set PIN
               </button>
             </div>
+
+            {m.role === 'child' && <ChildReminderSchedules childId={m.id} name={m.name} />}
 
             {m.role === 'parent' && (
               <EmailForm member={m} onSaved={() => qc.invalidateQueries({ queryKey: ['parent-overview'] })} />

@@ -1,3 +1,4 @@
+import { timeoutFetch } from '@/lib/request-timeout'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -7,7 +8,8 @@ export async function GET(req: NextRequest) {
   const cookieStore = await cookies()
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { global: { fetch: timeoutFetch(6000) } }
   )
 
   // Resolve base session first (profile_token or Supabase auth)
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+      { global: { fetch: timeoutFetch(4000) }, cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
     )
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
