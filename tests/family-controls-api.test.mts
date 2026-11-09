@@ -73,3 +73,27 @@ test('remote maintenance rejects child initiation, unlinked device and arbitrary
  assert.equal(x.calls[0].args.p_client,'90000000-0000-4000-8000-000000000001')
  assert.equal(x.calls[0].name,'companion_finish_command')
 })
+test('parent queues maintenance commands with correct scope and all four kinds accepted',async()=>{
+ const clientId='80000000-0000-4000-8000-000000000001'
+ const requestId='70000000-0000-4000-8000-000000000001'
+ // happy path: parent queues each valid kind
+ for(const kind of ['diagnostics','check-update','apply-update','test-countdown']){
+  const x=fixture()
+  const res=await x.maintenance.POST(request({clientId,requestId,kind}))
+  assert.equal(res.status,200,`kind=${kind} should succeed`)
+  assert.equal(x.calls.length,1)
+  assert.equal(x.calls[0].name,'companion_queue_command')
+  assert.equal(x.calls[0].args.p_kind,kind)
+  assert.equal(x.calls[0].args.p_client,clientId)
+  assert.equal(x.calls[0].args.p_family,F)
+  assert.equal(x.calls[0].args.p_actor,P)
+ }
+ // invalid kind rejected before any RPC call
+ const bad=fixture()
+ assert.equal((await bad.maintenance.POST(request({clientId,requestId,kind:'rm-rf'}))).status,400)
+ assert.equal(bad.calls.length,0)
+ // malformed UUIDs rejected before any RPC call
+ const badId=fixture()
+ assert.equal((await badId.maintenance.POST(request({clientId:'not-a-uuid',requestId,kind:'diagnostics'}))).status,400)
+ assert.equal(badId.calls.length,0)
+})
