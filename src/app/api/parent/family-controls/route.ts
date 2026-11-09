@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { requireParent, childInFamily } from '@/lib/api-auth'
 import { limitedJson, sameOrigin } from '@/lib/companion/desktop-server'
-import { cleanSettings, text, UUID } from '@/lib/family-controls/policy'
+import { cleanSettings, integer, text, UUID } from '@/lib/family-controls/policy'
 import { familyOverview } from '@/lib/family-controls/server'
 import { response, failure, rpcFailure, cleanMoneyAction } from '@/lib/family-controls/http'
 export const dynamic='force-dynamic'
@@ -27,6 +27,8 @@ export async function POST(req:NextRequest) {
   let result
   if(b.action==='settings')result=await admin.rpc('family_save_settings',{...scope,p_settings:cleanSettings(b.settings)})
   else if(b.action==='bathroom-bonus')result=await admin.rpc('family_bathroom_bonus',{...scope,p_note:text(b.note,500,'confirmation of the completed bathroom clean')})
+  else if(b.action==='extra-grant')result=await admin.rpc('family_extra_grant',{...scope,p_minutes:integer(b.minutes,0,240,'Extra minutes'),p_note:typeof b.minutes==='number'&&b.minutes>0?text(b.note,200,'a reason for the extra time'):'',})
+  else if(b.action==='set-paused'){if(typeof b.paused!=='boolean')throw new Error('Invalid pause value.');result=await admin.rpc('family_set_paused',{...scope,p_paused:b.paused})}
   else result=await admin.rpc('family_money_action',{...scope,p_action:String(b.action),p_body:cleanMoneyAction(b)})
   if(result.error)return rpcFailure(result.error)
   return response({ok:true})

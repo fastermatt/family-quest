@@ -44,7 +44,10 @@ export function FamilyControlsParent() {
       <label className="block">Child<select className="field mt-2" value={id || ''} onChange={e => { setSelected(e.target.value); setNotice('') }}>{d?.children.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       {notice && <p className="panel p-3 text-[14px]" role={save.isError ? 'alert' : 'status'}>{notice}</p>}
       {!o ? <p>Add a child in Family first.</p> : <>
-        <section className="panel space-y-2 p-5"><h2 className="text-[20px] font-semibold">Today · {o.day}</h2><p><strong>{duration(o.game.remainingSeconds)}</strong> game time left from {duration(o.game.grantedSeconds)} earned, based on the last PC upload.</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.reason}</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.remainingTasks} of {o.game.requiredCount} required responsibilities still need completion or review. School and YouTube do not use game minutes.</p><p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>PC activity can be about five minutes behind. Applies to classified games while the pilot app is running; this is not native filtering or a whole PC bedtime lock.</p></section>
+        <section className="panel space-y-2 p-5"><h2 className="text-[20px] font-semibold">Today · {o.day}</h2><p><strong>{duration(o.game.remainingSeconds)}</strong> game time left from {duration(o.game.grantedSeconds)} earned{o.game.extraGrantSeconds>0?` (includes ${duration(o.game.extraGrantSeconds)} bonus)`:''}, based on the last PC upload.</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.reason}</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.remainingTasks} of {o.game.requiredCount} required responsibilities still need completion or review. School and YouTube do not use game minutes.</p><p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>PC activity can be about five minutes behind. Applies to classified games while the pilot app is running; this is not native filtering or a whole PC bedtime lock.</p>
+          {o.settings.enabled&&<div className="flex flex-wrap items-center gap-3 border-t pt-3"><p className="flex-1 text-[14px]">{o.game.paused?'Games are currently paused on the connected PC.':'Games are currently running normally.'}</p><button className="btn btn-quiet" disabled={save.isPending} onClick={()=>act({action:'set-paused',paused:!o.game.paused})}>{o.game.paused?'Resume games':'Pause games'}</button></div>}
+        </section>
+        <ExtraGrantEditor childId={o.childId} enabled={o.settings.enabled} extraGrantSeconds={o.game.extraGrantSeconds} busy={save.isPending} onSave={(minutes,note)=>act({action:'extra-grant',minutes,note})} />
         <SettingsEditor key={`${id}-${o.settings.revision}`} initial={o.settings} privileges={d?.privileges || []} busy={save.isPending} onSave={settings => act({ action: 'settings', settings })} />
         <MoneyPanel key={id} overview={o} busy={save.isPending} onAction={act} />
         <section className="panel space-y-2 p-4"><h2 className="text-[18px] font-semibold">Connected PCs</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>One linked active PC per child in this pilot. If another PC is linked, game time pauses until you unlink the extra account from PC time.</p>{o.devices.length ? o.devices.map(dev => <p key={dev.id} className="text-[14px]">{dev.name} · {dev.last_seen_at ? `Last seen ${clock(dev.last_seen_at)}` : 'Waiting for first check-in'} · {dev.applied_at ? `Settings revision ${dev.applied_revision ?? 'unknown'} acknowledged ${clock(dev.applied_at)}${dev.applied_revision === o.settings.revision ? '' : `; current revision ${o.settings.revision} awaits acknowledgement`}` : `Current settings revision ${o.settings.revision} awaits acknowledgement`}{needsAgentUpdate(dev.version) ? ' · Update the PC app to version 0.3.0 or newer for these rules.' : ''}</p>) : <p className="text-[14px]">No linked PC yet. Link one from PC time.</p>}<p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Acknowledged settings do not confirm fresh chore or usage data.</p><a className="btn btn-quiet" href="/pc">PC time & linking</a></section>
@@ -98,6 +101,44 @@ function MoneyPanel({ overview: o, busy, onAction }: { overview: FamilyOverview;
   {!!o.money.entries.length && <details className="panel p-5"><summary className="cursor-pointer font-semibold">Recent money history (up to 50 entries)</summary><ul className="mt-3 space-y-2">{o.money.entries.map(entry => <li key={entry.id} className="row p-3 text-[13px]"><strong>{entry.description}</strong><span className="block">{clock(entry.created_at)} · IOU {money(entry.debt_delta_cents)} · Cash {money(entry.cash_delta_cents)}</span></li>)}</ul></details>}
   {localError && <p role="alert" style={{ color: 'var(--miss)' }}>{localError}</p>}
   </section>
+}
+
+function ExtraGrantEditor({ childId, enabled, extraGrantSeconds, busy, onSave }: { childId: string; enabled: boolean; extraGrantSeconds: number; busy: boolean; onSave: (minutes: number, note: string) => void }) {
+  const [minutes, setMinutes] = useState('')
+  const [note, setNote] = useState('')
+  const [editing, setEditing] = useState(false)
+  const active = extraGrantSeconds > 0
+  if (!enabled) return null
+  if (!editing && !active) return (
+    <section className="panel p-5 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div><h2 className="text-[18px] font-semibold">Extra time today</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Grant bonus minutes on top of today's earned time (birthdays, special occasions).</p></div>
+        <button className="btn btn-quiet shrink-0" onClick={() => setEditing(true)}>Grant extra</button>
+      </div>
+    </section>
+  )
+  if (!editing && active) return (
+    <section className="panel p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div><h2 className="text-[18px] font-semibold">Extra time today</h2><p className="text-[14px]">{duration(extraGrantSeconds)} of bonus time active today.</p></div>
+        <div className="flex gap-2">
+          <button className="btn btn-quiet shrink-0" onClick={() => { setMinutes(String(extraGrantSeconds / 60)); setEditing(true) }}>Edit</button>
+          <button className="btn btn-quiet shrink-0" disabled={busy} onClick={() => { if (confirm(`Remove today’s extra time bonus?`)) onSave(0, '') }}>Remove</button>
+        </div>
+      </div>
+    </section>
+  )
+  return (
+    <section className="panel p-5 space-y-4">
+      <div><h2 className="text-[18px] font-semibold">Extra time today</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>One bonus grant per day, any reason. Stacks on top of earned minutes. Expires at midnight Denver time.</p></div>
+      <label className="block text-[14px]">Minutes (1–240)<input className="field mt-1" type="number" min={1} max={240} value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
+      <label className="block text-[14px]">Reason<input className="field mt-1" maxLength={200} placeholder="e.g. Birthday, finished homework early" value={note} onChange={e => setNote(e.target.value)} /></label>
+      <div className="flex gap-3">
+        <button className="btn btn-primary" disabled={busy} onClick={() => { const m = Number(minutes); if (!Number.isInteger(m) || m < 1 || m > 240) return; if (!note.trim()) return; onSave(m, note.trim()); setEditing(false); setMinutes(''); setNote('') }}>Grant extra time</button>
+        <button className="btn btn-quiet" onClick={() => { setEditing(false); setMinutes(''); setNote('') }}>Cancel</button>
+      </div>
+    </section>
+  )
 }
 
 function JobReview({ job: j, busy, onAction }: { job: JobOffer; busy: boolean; onAction: (body: Record<string, unknown>) => void }) {

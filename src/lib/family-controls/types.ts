@@ -24,7 +24,7 @@ export interface MoneyEntry {
 }
 export interface FamilyOverview {
   childId: string; childName: string; day: string; settings: FamilySettings
-  game: {eligible: boolean; requiredCount: number; remainingTasks: number; grantedSeconds: number; usedSeconds: number; remainingSeconds: number; allowed: boolean; reason: string; bathroomGranted: boolean; nextChangeAt: string}
+  game: {eligible: boolean; requiredCount: number; remainingTasks: number; grantedSeconds: number; extraGrantSeconds: number; usedSeconds: number; remainingSeconds: number; allowed: boolean; paused: boolean; reason: string; bathroomGranted: boolean; nextChangeAt: string}
   money: {initialized: boolean; debtRemainingCents: number; cashOwedCents: number; entries: MoneyEntry[]}
   jobs: JobOffer[]
   devices: {id:string;name:string;version:string|null;last_seen_at:string|null;applied_revision:number|null;applied_at:string|null}[]

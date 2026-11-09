@@ -19,22 +19,24 @@ export async function familyOverview(db: Admin, familyId: string, childId: strin
   const s = (state.data.settings ?? DEFAULT_SETTINGS) as FamilySettings
   const day = localParts(now,s.timezone).day
   if (state.data.day !== day) throw new Error('The family day changed. Refresh to load today’s rules.')
-  const [activity,rules] = await Promise.all([
+  const [activity,rules,extraGrant] = await Promise.all([
     db.from('companion_activity').select('client_id,apps').eq('family_id',familyId).eq('child_id',childId).eq('day',day).limit(1500),
     db.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',familyId).eq('child_id',childId),
+    db.from('family_game_grants').select('seconds').eq('family_id',familyId).eq('child_id',childId).eq('day',day).eq('kind','extra').maybeSingle(),
   ])
   if(activity.error||rules.error) throw new Error('PC usage could not be loaded.')
   const apps=aggregateApps(activity.data??[]), effective=effectiveGameRules(apps,rules.data??[])
   const usedSeconds=Math.ceil(apps.filter(a=>effective.some(r=>r.executable===a.executable&&r.category==='game')).reduce((sum,a)=>sum+a.seconds,0))
   const remainingSeconds=Math.max(0,state.data.grantedSeconds-usedSeconds)
-  const decision=gameDecision(s,state.data.eligible,remainingSeconds,limits.data?.paused??false,now)
+  const paused=limits.data?.paused??false
+  const decision=gameDecision(s,state.data.eligible,remainingSeconds,paused,now)
   if(s.enabled&&(devices.data?.length??0)>1){decision.allowed=false;decision.reason="This pilot supports one linked PC per child. Unlink extra PCs in PC time."}
   const deviceVersion=devices.data?.[0]?.version?.split('.').map(Number)??[]
   if(s.enabled&&devices.data?.length===1&&!(deviceVersion[0]>0||(deviceVersion[0]===0&&deviceVersion[1]>=3))){decision.allowed=false;decision.reason="Update the PC companion to 0.3.0 or newer to use earned game time."}
   if(s.enabled&&!devices.data?.length){decision.allowed=false;decision.reason="Game minutes are saved. Link a PC to use them."}
   return {
     childId,childName:profile.data!.name,day,settings:s,
-    game:{...state.data,usedSeconds,remainingSeconds,...decision},
+    game:{...state.data,extraGrantSeconds:extraGrant.data?.seconds??0,usedSeconds,remainingSeconds,paused,...decision},
     money:{initialized:account.data?.initialized??false,debtRemainingCents:account.data?.debt_remaining_cents??0,cashOwedCents:account.data?.cash_owed_cents??0,entries:(entries.data??[]) as MoneyEntry[]},
     jobs:(jobs.data??[]) as JobOffer[],devices:devices.data??[],
   }
