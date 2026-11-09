@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Brand } from '@/components/brand'
-import type { FamilyOverview, FamilySettings, JobOffer } from '@/lib/family-controls/types'
+import type { FamilyIncident, FamilyOverview, FamilySettings, JobOffer } from '@/lib/family-controls/types'
 import { centsFrom, clock, duration, money, postJson, WindowEditor } from './shared'
 
 type Data = { children: { id: string; name: string }[]; privileges?: { id: string; name: string }[]; overview: FamilyOverview | null }
@@ -47,6 +47,7 @@ export function FamilyControlsParent() {
         <section className="panel space-y-2 p-5"><h2 className="text-[20px] font-semibold">Today · {o.day}</h2><p><strong>{duration(o.game.remainingSeconds)}</strong> game time left from {duration(o.game.grantedSeconds)} earned{o.game.extraGrantSeconds>0?` (includes ${duration(o.game.extraGrantSeconds)} bonus)`:''}, based on the last PC upload.</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.reason}</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.remainingTasks} of {o.game.requiredCount} required responsibilities still need completion or review. School and YouTube do not use game minutes.</p><p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>PC activity can be about five minutes behind. Applies to classified games while the pilot app is running; this is not native filtering or a whole PC bedtime lock.</p>
           {o.settings.enabled&&<div className="flex flex-wrap items-center gap-3 border-t pt-3"><p className="flex-1 text-[14px]">{o.game.paused?'Games are currently paused on the connected PC.':'Games are currently running normally.'}</p><button className="btn btn-quiet" disabled={save.isPending} onClick={()=>act({action:'set-paused',paused:!o.game.paused})}>{o.game.paused?'Resume games':'Pause games'}</button></div>}
         </section>
+        <IncidentLog incidents={o.incidents} busy={save.isPending} onAdd={(kind,note,consequence)=>act({action:'add-incident',kind,note,consequence})} onResolve={(incidentId,note)=>act({action:'resolve-incident',incidentId,note})} />
         <ExtraGrantEditor childId={o.childId} enabled={o.settings.enabled} extraGrantSeconds={o.game.extraGrantSeconds} busy={save.isPending} onSave={(minutes,note)=>act({action:'extra-grant',minutes,note})} />
         <SettingsEditor key={`${id}-${o.settings.revision}`} initial={o.settings} privileges={d?.privileges || []} busy={save.isPending} onSave={settings => act({ action: 'settings', settings })} />
         <MoneyPanel key={id} overview={o} busy={save.isPending} onAction={act} />
@@ -139,6 +140,34 @@ function ExtraGrantEditor({ childId, enabled, extraGrantSeconds, busy, onSave }:
       </div>
     </section>
   )
+}
+
+const INCIDENT_KINDS: { value: FamilyIncident['kind']; label: string }[] = [
+  { value: 'disobeyed', label: 'Disobeyed' },
+  { value: 'lied', label: 'Lied' },
+  { value: 'talked-back', label: 'Talked back' },
+  { value: 'other', label: 'Other' },
+]
+function IncidentLog({ incidents, busy, onAdd, onResolve }: { incidents: FamilyIncident[]; busy: boolean; onAdd: (kind: FamilyIncident['kind'], note: string, consequence: 'block_games'|'none') => void; onResolve: (incidentId: string, note: string) => void }) {
+  const [kind, setKind] = useState<FamilyIncident['kind']>('disobeyed')
+  const [note, setNote] = useState('')
+  const [consequence, setConsequence] = useState<'block_games'|'none'>('block_games')
+  const [resolveId, setResolveId] = useState<string|null>(null)
+  const [resolveNote, setResolveNote] = useState('')
+  const active = incidents.filter(i => !i.resolved_at)
+  const resolved = incidents.filter(i => i.resolved_at)
+  const submit = () => { if (!note.trim()) return; onAdd(kind, note.trim(), consequence); setNote('') }
+  return <section className="panel space-y-4 p-5">
+    <div><h2 className="text-[20px] font-semibold">Behaviour log</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Record a behaviour issue. Set "Block games" to put games on hold until you resolve it.</p></div>
+    <div className="flex flex-wrap gap-2">{INCIDENT_KINDS.map(k => <button key={k.value} className={`btn ${kind===k.value?'btn-primary':'btn-quiet'}`} onClick={()=>setKind(k.value)}>{k.label}</button>)}</div>
+    <label className="block text-[14px]">What happened<textarea className="field mt-1" maxLength={500} rows={2} placeholder="Briefly describe what happened…" value={note} onChange={e => setNote(e.target.value)} /></label>
+    <div className="flex items-center gap-4">
+      <label className="flex items-center gap-2 text-[14px] cursor-pointer"><input type="checkbox" checked={consequence==='block_games'} onChange={e=>setConsequence(e.target.checked?'block_games':'none')} /><span>Block games until resolved</span></label>
+      <button className="btn btn-primary" disabled={busy || !note.trim()} onClick={submit}>Log it</button>
+    </div>
+    {active.length > 0 && <div className="space-y-2 border-t pt-3"><h3 className="text-[15px] font-semibold">Active ({active.length})</h3>{active.map(inc => <div key={inc.id} className="row space-y-2 p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><span className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--accent)' }}>{INCIDENT_KINDS.find(k=>k.value===inc.kind)?.label}</span>{inc.consequence==='block_games'&&<span className="ml-2 rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: 'var(--miss)', color: '#fff' }}>Games blocked</span>}</div><span className="text-[12px]" style={{ color: 'var(--ink-3)' }}>{clock(inc.created_at)}</span></div><p className="text-[14px]">{inc.note}</p>{resolveId===inc.id ? <div className="space-y-2"><label className="block text-[13px]">Resolution note<textarea className="field mt-1" maxLength={500} rows={2} placeholder="e.g. We talked about it and he apologised." value={resolveNote} onChange={e=>setResolveNote(e.target.value)} /></label><div className="flex gap-2"><button className="btn btn-primary" disabled={busy||!resolveNote.trim()} onClick={()=>{onResolve(inc.id,resolveNote.trim());setResolveId(null);setResolveNote('')}}>Mark resolved</button><button className="btn btn-quiet" onClick={()=>{setResolveId(null);setResolveNote('')}}>Cancel</button></div></div> : <button className="btn btn-quiet" onClick={()=>{setResolveId(inc.id);setResolveNote('')}}>Resolve…</button>}</div>)}</div>}
+    {resolved.length > 0 && <details className="border-t pt-3"><summary className="cursor-pointer text-[14px] font-medium">Resolved ({resolved.length})</summary><ul className="mt-2 space-y-2">{resolved.map(inc => <li key={inc.id} className="row p-3 text-[13px]"><div className="flex flex-wrap justify-between gap-1"><span className="font-medium">{INCIDENT_KINDS.find(k=>k.value===inc.kind)?.label}: {inc.note}</span><span style={{ color: 'var(--ink-3)' }}>{clock(inc.created_at)}</span></div>{inc.resolution_note && <p className="mt-1" style={{ color: 'var(--ink-2)' }}>Resolved: {inc.resolution_note}</p>}</li>)}</ul></details>}
+  </section>
 }
 
 function JobReview({ job: j, busy, onAction }: { job: JobOffer; busy: boolean; onAction: (body: Record<string, unknown>) => void }) {

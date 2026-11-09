@@ -22,11 +22,21 @@ export interface MoneyEntry {
   id: string; kind: 'opening_iou'|'job_credit'|'cash_settlement'
   description: string; debt_delta_cents: number; cash_delta_cents: number; created_at: string
 }
+export interface FamilyIncident {
+  id: string
+  kind: 'disobeyed'|'lied'|'talked-back'|'other'
+  note: string
+  consequence: 'block_games'|'none'
+  created_at: string
+  resolved_at: string|null
+  resolution_note: string|null
+}
 export interface FamilyOverview {
   childId: string; childName: string; day: string; settings: FamilySettings
   game: {eligible: boolean; requiredCount: number; remainingTasks: number; grantedSeconds: number; extraGrantSeconds: number; usedSeconds: number; remainingSeconds: number; allowed: boolean; paused: boolean; reason: string; bathroomGranted: boolean; nextChangeAt: string}
   money: {initialized: boolean; debtRemainingCents: number; cashOwedCents: number; entries: MoneyEntry[]}
   jobs: JobOffer[]
+  incidents: FamilyIncident[]
   devices: {id:string;name:string;version:string|null;last_seen_at:string|null;applied_revision:number|null;applied_at:string|null}[]
 }
 export interface FamilyPolicy {
