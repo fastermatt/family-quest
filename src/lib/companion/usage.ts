@@ -78,13 +78,15 @@ export function isNoise(domain: string): boolean {
 
 export type Site = { site: string; n: number; examples: string[] }
 
-/** Add up many uploads into sites, busiest first. Noise is left out. */
+/** Add up DNS sightings by exact hostname; counts are not visits or minutes. Noise is left out. */
 export function aggregateUsage(rollups: Array<{ domains: UsageDomain[] }>, opts: { includeNoise?: boolean } = {}): Site[] {
   const sites = new Map<string, { n: number; subs: Map<string, number> }>()
   for (const r of rollups) {
     for (const { d, n } of r.domains ?? []) {
       if (!opts.includeNoise && isNoise(d)) continue
-      const s = siteOf(d)
+      // Keep the observed hostname. Guessing registrable domains can merge
+      // unrelated tenants (e.g. two github.io sites) and widen a quick rule.
+      const s = d
       const e = sites.get(s) ?? { n: 0, subs: new Map() }
       e.n += n
       e.subs.set(d, (e.subs.get(d) ?? 0) + n)

@@ -3,7 +3,7 @@
 //
 // Order (from the architecture review):
 //   1. System allowlist  - things that must always work. Not editable.
-//   2. Rules, most specific domain wins. Same domain: school > deny > allow.
+//   2. School exceptions, then most-specific ordinary rules (deny > allow on ties).
 //   3. Category switches that are on.
 //   4. Default allow (the service logs unknown activity, it does not guess).
 
@@ -12,6 +12,12 @@ import { domainMatches, suffixes, type RuleKind } from './domains.ts'
 
 /** Always reachable, whatever a parent or category says. Per-family school sites are 'school' rules. */
 export const SYSTEM_ALLOW: string[] = [
+  'youtube.com',
+  'youtu.be',
+  'youtube-nocookie.com',
+  'googlevideo.com',
+  'ytimg.com',
+  'greyson-lesson.netlify.app',
   'family-tasks-deploy.vercel.app', // ChoreZap itself: a lock must never trap Grey away from his chores
   'windowsupdate.com',
   'update.microsoft.com',
@@ -43,6 +49,12 @@ export function decide(domain: string, policy: Policy): Decision {
   for (const s of SYSTEM_ALLOW) {
     if (domainMatches(s, domain)) return { action: 'allow', reason: 'system', match: s }
   }
+
+  // School is a protected exception, even beneath a broader or narrower deny.
+  const school = policy.rules
+    .filter((r) => r.kind === 'school' && domainMatches(r.domain, domain))
+    .sort((a, b) => b.domain.length - a.domain.length)[0]
+  if (school) return { action: 'allow', reason: 'school', match: school.domain }
 
   let best: Rule | null = null
   for (const r of policy.rules) {

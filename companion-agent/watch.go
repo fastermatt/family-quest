@@ -64,6 +64,11 @@ func upload(cfg Config, p *Pending, end time.Time) (uploadResult, string) {
 }
 
 func watch(o watchOpts) error {
+	if o.sampleEvery < time.Second || o.flushEvery < time.Second {
+		return fmt.Errorf("sample and flush intervals must be at least 1s")
+	}
+	fmt.Println("NETWORK DIAGNOSTICS: machine-wide DNS cache, including other users and background traffic.")
+	fmt.Println("Not browsing history, visits, watch time or game time. Upload requires --local-only=false.")
 	var cfg Config
 	if !o.localOnly {
 		var err error

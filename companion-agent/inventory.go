@@ -21,6 +21,15 @@ type WindowsInfo struct {
 	Build          string `json:"build"`
 }
 
+// Status is how the watcher is doing, so ChoreZap can show "Watching" and the last problem.
+type Status struct {
+	Watching     bool   `json:"watching"`
+	Samples      int    `json:"samples"`
+	LastSampleAt string `json:"lastSampleAt"`
+	LastUploadAt string `json:"lastUploadAt"`
+	LastError    string `json:"lastError"`
+}
+
 type Inventory struct {
 	AgentVersion  string      `json:"agentVersion"`
 	Hostname      string      `json:"hostname"`
@@ -30,6 +39,7 @@ type Inventory struct {
 	Browsers      []string    `json:"browsers"`
 	Avast         bool        `json:"avast"`
 	OtherSecurity []string    `json:"otherSecurity"`
+	Status        Status      `json:"status"`
 }
 
 const adminGroupSID = "S-1-5-32-544"

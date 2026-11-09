@@ -44,3 +44,9 @@ next-env.d.ts
 
 # Windows companion build output
 dist/
+
+# Private companion server identity and rollback data
+.companion/
+
+# Supabase CLI local metadata
+supabase/.temp/

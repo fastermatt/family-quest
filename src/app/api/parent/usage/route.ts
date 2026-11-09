@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     admin.from('companion_rules').select('kind, domain').eq('family_id', me.family_id),
     admin.from('companion_categories').select('category_id, enabled').eq('family_id', me.family_id),
   ])
-  if (usage.error) return bad(usage.error.message, 500)
+  if (usage.error || rules.error || cats.error) return bad('Could not load network diagnostics and saved rules.', 500)
 
   const saved = new Map((cats.data ?? []).map((c) => [c.category_id as string, c.enabled as boolean]))
   const enabledCategories = CATEGORIES.filter((c) => (saved.has(c.id) ? saved.get(c.id) : c.defaultOn)).map((c) => c.id as CategoryId)
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     .slice(0, 60)
     .map((s) => {
       const d = decide(s.site, policy)
-      return { ...s, status: d.action === 'block' ? 'blocked' : d.reason === 'default' ? 'open' : d.reason }
+      return { ...s, status: d.action === 'block' ? 'Would block' : d.reason === 'school' || d.reason === 'system' ? 'Always allowed' : 'Would allow' }
     })
-  return NextResponse.json({ days, uploads: rows.length, lastUpload: rows[0]?.period_end ?? null, sites })
+  return NextResponse.json({ source: 'machine-dns-cache', scope: 'whole-pc', enforcement: 'not-implemented', days, uploads: rows.length, lastUpload: rows[0]?.period_end ?? null, sites })
 }

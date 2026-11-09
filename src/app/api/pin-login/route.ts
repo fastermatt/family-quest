@@ -75,7 +75,11 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 365,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' && !(
+      process.env.CHOREZAP_LAN_LOGIN === '1' &&
+      ['192.168.4.52:3100', 'Matts-MacBook-Air.local:3100'.toLowerCase()].includes((req.headers.get('host') ?? '').toLowerCase()) &&
+      ['http://192.168.4.52:3100', 'http://matts-macbook-air.local:3100'].includes((req.headers.get('origin') ?? '').toLowerCase())
+    ),
   })
 
   return response

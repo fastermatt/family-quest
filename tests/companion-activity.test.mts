@@ -1,0 +1,9 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {cleanActivity,cleanAppRule,denverDay,aggregateApps} from '../src/lib/companion/activity.ts'
+const now=Date.parse('2026-10-23T01:00:00Z')
+const batch={id:'2e6957dd-a4c1-4be5-9f0a-645bead0d8b5',start:'2026-10-23T00:55:00Z',end:'2026-10-23T01:00:00Z',gaps:10,apps:[{executable:'ModernWarfare.exe',seconds:290}],version:'0.2.0'}
+test('foreground batch balances, normalizes and bounds input',()=>{assert.equal(cleanActivity(batch,now).apps[0].executable,'modernwarfare.exe');for(const change of [{gaps:0},{apps:[{executable:'../game.exe',seconds:290}]},{apps:[{executable:'game.exe',seconds:-1}]},{end:'2026-10-23T01:10:00Z'},{id:'x'}])assert.throws(()=>cleanActivity({...batch,...change},now))})
+test('duplicate executable rows cannot double count time',()=>assert.throws(()=>cleanActivity({...batch,apps:[{executable:'game.exe',seconds:145},{executable:'GAME.exe',seconds:145}]},now)))
+test('browsers, system tools and launchers cannot become limited games',()=>{for(const executable of ['msedge.exe','chrome.exe','steamwebhelper.exe','explorer.exe','chorezap-desktop.exe'])assert.throws(()=>cleanAppRule({executable,category:'game',dailyMinutes:0}));assert.equal(cleanAppRule({executable:'modernwarfare.exe',category:'game',dailyMinutes:60,label:'Modern Warfare'}).daily_minutes,60);assert.equal(cleanAppRule({executable:'lesson.exe',category:'school',dailyMinutes:0}).daily_minutes,null)})
+test('Denver date and real app totals remain separate from DNS counts',()=>{assert.equal(denverDay(new Date('2026-10-23T01:00:00Z')),'2026-10-22');assert.equal(denverDay(new Date('2026-10-23T06:00:00Z')),'2026-10-23');assert.deepEqual(aggregateApps([{apps:[{executable:'game.exe',seconds:2}]},{apps:[{executable:'game.exe',seconds:3}]}]),[{executable:'game.exe',seconds:5}])})

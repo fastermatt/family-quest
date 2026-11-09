@@ -40,6 +40,7 @@ export type Inventory = {
   browsers: string[]
   avast: boolean
   otherSecurity: string[]
+  status: { watching: boolean; samples: number; lastSampleAt: string; lastUploadAt: string; lastError: string }
 }
 
 const str = (v: unknown, max = 80) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim().slice(0, max) : '')
@@ -48,6 +49,7 @@ const strs = (v: unknown, n = 20) => (Array.isArray(v) ? v.map((x) => str(x)).fi
 /** Keep only the fields we know, trimmed. Everything else the PC sends is dropped. */
 export function cleanInventory(body: unknown): Inventory {
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  const st = (b.status && typeof b.status === 'object' ? b.status : {}) as Record<string, unknown>
   const w = (b.windows && typeof b.windows === 'object' ? b.windows : {}) as Record<string, unknown>
   return {
     agentVersion: str(b.agentVersion, 20),
@@ -66,5 +68,12 @@ export function cleanInventory(body: unknown): Inventory {
     browsers: strs(b.browsers),
     avast: b.avast === true,
     otherSecurity: strs(b.otherSecurity),
+    status: {
+      watching: st.watching === true,
+      samples: typeof st.samples === 'number' && Number.isFinite(st.samples) ? Math.max(0, Math.floor(st.samples)) : 0,
+      lastSampleAt: str(st.lastSampleAt, 40),
+      lastUploadAt: str(st.lastUploadAt, 40),
+      lastError: str(st.lastError, 160),
+    },
   }
 }

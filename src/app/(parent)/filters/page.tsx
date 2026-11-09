@@ -17,6 +17,7 @@ interface Device {
     accounts?: { name: string; type: string; isAdmin: boolean; enabled: boolean }[]
     browsers?: string[]
     avast?: boolean
+    status?: { watching: boolean; samples: number; lastSampleAt: string; lastUploadAt: string; lastError: string }
   }
 }
 
@@ -33,6 +34,7 @@ export default function FiltersPage() {
   const qc = useQueryClient()
   const [domain, setDomain] = useState('')
   const [kind, setKind] = useState<Kind>('deny')
+  const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const { data, isLoading, error: loadError } = useQuery<Data>({
@@ -43,7 +45,11 @@ export default function FiltersPage() {
       return res.json()
     },
   })
-  const refresh = () => qc.invalidateQueries({ queryKey: ['filters'] })
+  const refresh = () => {
+    setSaved('Rules saved for later. No PC blocking is active yet.')
+    void qc.invalidateQueries({ queryKey: ['usage'] })
+    return qc.invalidateQueries({ queryKey: ['filters'] })
+  }
 
   const usage = useQuery<{ days: number; uploads: number; lastUpload: string | null; sites: { site: string; n: number; examples: string[]; status: string }[] }>({
     queryKey: ['usage'],
@@ -105,16 +111,37 @@ export default function FiltersPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-[22px] font-bold">Web filters</h1>
+        <h1 className="text-[22px] font-bold">PC companion</h1>
         <p className="mt-1 text-[14px]" style={{ color: 'var(--ink-2)' }}>
-          Preview only. These settings are saved, but nothing is enforced on a PC until the Windows app is installed and paired.
+          Rules can be saved here. This build does not block websites or games, even when a PC is installed and linked.
         </p>
       </header>
 
+      <section className="panel p-4" aria-labelledby="coverage-h">
+        <h2 id="coverage-h" className="text-[18px] font-semibold">What this build can tell you</h2>
+        <dl className="mt-3 divide-y" style={{ borderColor: 'var(--line)' }}>
+          {[
+            ['Game time', 'Not collected yet', 'The Windows foreground pilot is local-only. Launcher activity is not game time.'],
+            ['Browsing journal', 'Not collected yet', 'Page timestamps and YouTube titles need the browser collector.'],
+            ['Phone blocking', 'Not implemented', 'Linking a PC does not activate limits, chore gates or blocks.'],
+          ].map(([label, state, detail]) => (
+            <div key={label} className="py-3">
+              <div className="flex flex-wrap justify-between gap-2"><dt className="font-semibold">{label}</dt><dd className="text-[14px]" style={{ color: 'var(--redo)' }}>{state}</dd></div>
+              <p className="mt-1 text-[14px]" style={{ color: 'var(--ink-2)' }}>{detail}</p>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-[14px]" style={{ color: 'var(--ok)' }}>School and YouTube remain available. Diagnostic sightings never use entertainment minutes.</p>
+      </section>
+
+      {saved && <p role="status" className="text-[14px]" style={{ color: 'var(--ok)' }}>{saved}</p>}
       {error && <p role="alert" className="text-[14px]" style={{ color: 'var(--miss)' }}>{error}</p>}
 
       <section className="panel space-y-3 p-4" aria-labelledby="pc-h">
         <h2 id="pc-h" className="text-[16px] font-semibold">Your PCs</h2>
+        {devices.isLoading && <p role="status">Loading linked PCs…</p>}
+        {devices.isError && <p role="alert">Could not load PCs. <button className="btn btn-quiet" onClick={() => devices.refetch()}>Retry PCs</button></p>}
+        {devices.isSuccess && devices.data.devices.length === 0 && <p style={{ color: 'var(--ink-2)' }}>No PCs linked yet. Pairing enables inventory reports, not time tracking or blocking.</p>}
         {(devices.data?.devices ?? []).map((d) => (
           <div key={d.id} className="row flex items-start gap-3 p-3">
             <span className="min-w-0 flex-1">
@@ -128,9 +155,16 @@ export default function FiltersPage() {
                 </span>
               ))}
               <span className="block text-[13px]" style={{ color: 'var(--ink-3)' }}>
-                {d.last_seen_at ? `Last seen ${new Date(d.last_seen_at).toLocaleString()}` : 'Not reported yet'}
+                {d.last_seen_at ? `Last report ${new Date(d.last_seen_at).toLocaleString('en-US', { timeZone: 'America/Denver', timeZoneName: 'short' })}` : 'Not reported yet'}
                 {d.inventory.avast ? ' · Avast found' : ''}
               </span>
+              {d.inventory.status && (
+                <span className="block text-[13px]" style={{ color: d.inventory.status.lastError ? 'var(--redo)' : 'var(--ink-3)' }}>
+                  {d.inventory.status.watching ? 'Watching' : 'Not watching'}
+                  {d.inventory.status.lastUploadAt ? ` · last summary ${new Date(d.inventory.status.lastUploadAt).toLocaleString()}` : ''}
+                  {d.inventory.status.lastError ? ` · ${d.inventory.status.lastError}` : ''}
+                </span>
+              )}
             </span>
             <button type="button" className="btn btn-quiet h-11 w-11 p-0" aria-label={`Unlink ${d.name}`} disabled={unlink.isPending} onClick={() => unlink.mutate(d.id)}>
               <Trash2 className="h-[18px] w-[18px]" aria-hidden />
@@ -150,7 +184,7 @@ export default function FiltersPage() {
       </section>
 
       <section className="panel space-y-3 p-4" aria-labelledby="add-h">
-        <h2 id="add-h" className="text-[16px] font-semibold">Add a site</h2>
+        <h2 id="add-h" className="text-[16px] font-semibold">Save a website rule</h2>
         <form
           className="space-y-3"
           onSubmit={(e) => { e.preventDefault(); if (domain.trim()) add.mutate() }}
@@ -183,17 +217,17 @@ export default function FiltersPage() {
             ))}
           </div>
           <button type="submit" className="btn btn-primary w-full" disabled={!domain.trim() || add.isPending}>
-            {add.isPending ? 'Saving…' : 'Add'}
+            {add.isPending ? 'Saving…' : 'Save rule'}
           </button>
         </form>
         <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
-          A site also covers its subdomains. The most specific rule wins, so you can block a site but keep one of its pages open.
+          Enter a hostname, such as lessons.example.com. Rules cover its subdomains, not individual pages. School exceptions always win; other rules use the most specific hostname. Specific page links are rejected rather than silently becoming whole-site rules.
         </p>
       </section>
 
       {groups.map((g) => (
         <section key={g} className="space-y-2" aria-labelledby={`g-${g}`}>
-          <h2 id={`g-${g}`} className="text-[16px] font-semibold">{g === 'Lists' ? 'Block by category' : 'Block an app or site'}</h2>
+          <h2 id={`g-${g}`} className="text-[16px] font-semibold">{g === 'Lists' ? 'Block by category' : 'Website service rules'}</h2>
           {data.categories.filter((c) => c.group === g).map((c) => (
             <label key={c.id} className="row flex items-center gap-3 p-3">
               <input
@@ -212,15 +246,18 @@ export default function FiltersPage() {
         </section>
       ))}
       <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
-        Category lists from the community are not loaded yet in this version; apps and sites with a fixed list work in the preview only.
+        Community category lists are not loaded. Fixed website lists can be evaluated in the preview, but do not stop installed apps or offline games.
         YouTube is never blocked by a category.
       </p>
 
       <section className="space-y-2" aria-labelledby="seen-h">
-        <h2 id="seen-h" className="text-[16px] font-semibold">Seen this week</h2>
-        {(usage.data?.sites.length ?? 0) === 0 ? (
+        <h2 id="seen-h" className="text-[16px] font-semibold">Network diagnostics</h2>
+        <p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>Whole-PC DNS observations, not Grey&apos;s browsing history. These may include other Windows users and background apps. Counts do not measure visits, time played or videos watched.</p>
+        {usage.isLoading ? <p role="status">Loading diagnostics…</p> : usage.isError ? (
+          <p role="alert">Could not load diagnostics. <button className="btn btn-quiet" onClick={() => usage.refetch()}>Retry diagnostics</button></p>
+        ) : (usage.data?.sites.length ?? 0) === 0 ? (
           <p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>
-            Nothing yet. Once a linked PC is watching, the busiest sites show up here so you can allow or block them with one tap.
+            No DNS observations uploaded. Keep this optional diagnostic separate from the planned account-specific activity tracker.
           </p>
         ) : (
           <>
@@ -228,20 +265,20 @@ export default function FiltersPage() {
               <div key={s.site} className="row space-y-2 p-3">
                 <div className="flex items-baseline gap-2">
                   <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{s.site}</span>
-                  <span className="text-[13px]" style={{ color: s.status === 'blocked' ? 'var(--miss)' : 'var(--ink-3)' }}>{s.status}</span>
-                  <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>{s.n}</span>
+                  <span className="text-[13px]" style={{ color: s.status === 'Would block' ? 'var(--miss)' : 'var(--ink-3)' }}>{s.status}</span>
+                  <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>{s.n} sightings</span>
                 </div>
                 <div className="flex gap-2">
                   {(['allow', 'deny', 'school'] as Kind[]).map((k) => (
                     <button key={k} type="button" className="btn btn-quiet h-11 flex-1 px-2 text-[14px]" disabled={quick.isPending} onClick={() => quick.mutate({ kind: k, domain: s.site })}>
-                      {k === 'deny' ? 'Block' : k === 'allow' ? 'Allow' : 'School'}
+                      {k === 'deny' ? 'Save block' : k === 'allow' ? 'Save allow' : 'School'}
                     </button>
                   ))}
                 </div>
               </div>
             ))}
             <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
-              Numbers are how often a site showed up in the PC&apos;s checks, not exact visits. Windows background traffic is hidden.
+              Known infrastructure domains are filtered; other background traffic can remain. “Would block” describes the saved rule, not a confirmed block.
             </p>
           </>
         )}
@@ -255,7 +292,7 @@ export default function FiltersPage() {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] font-semibold">{r.domain}</span>
               <span className="block text-[13px]" style={{ color: r.kind === 'deny' ? 'var(--miss)' : 'var(--ok)' }}>
-                {KIND_LABEL[r.kind]}
+                {KIND_LABEL[r.kind]} · saved, not applied
               </span>
             </span>
             <button

@@ -139,7 +139,7 @@ test('category catalog is sane and never lists YouTube or game-platform domains'
 import { cleanRule } from '../src/lib/companion/rules.ts'
 
 test('cleanRule: normalizes, validates, protects always-allowed sites', () => {
-  const ok = cleanRule({ kind: 'deny', domain: 'https://www.TikTok.com/x', note: '  no  ' })
+  const ok = cleanRule({ kind: 'deny', domain: 'https://www.TikTok.com/', note: '  no  ' })
   assert.deepEqual(ok.values, { kind: 'deny', domain: 'tiktok.com', note: 'no' })
   assert.ok(cleanRule({ kind: 'nope', domain: 'a.com' }).error)
   assert.ok(cleanRule({ kind: 'deny', domain: 'localhost' }).error)
@@ -193,7 +193,12 @@ test('cleanInventory keeps known fields only and trims', () => {
     browsers: ['Edge', 'Chrome'],
     avast: true,
     otherSecurity: [],
+    status: { watching: false, samples: 0, lastSampleAt: '', lastUploadAt: '', lastError: '' },
   })
+  const st = cleanInventory({ status: { watching: true, samples: 12.7, lastSampleAt: '2026-10-22T20:00:00Z', lastError: 'x'.repeat(500) } }).status
+  assert.equal(st.watching, true)
+  assert.equal(st.samples, 12)
+  assert.equal(st.lastError.length, 160)
   assert.deepEqual(cleanInventory(null).accounts, [])
   assert.equal(cleanInventory({ accounts: [{ type: 'admin!' }] }).accounts[0].type, 'unknown')
   assert.equal(cleanInventory({ accounts: [{ isAdmin: 'yes' }] }).accounts[0].isAdmin, false)
@@ -252,8 +257,37 @@ test('aggregateUsage groups by site, hides noise, busiest first', () => {
     { domains: [{ d: 'a.tiktok.com', n: 5 }, { d: 'b.tiktok.com', n: 2 }, { d: 'khanacademy.org', n: 4 }, { d: 'x.msftconnecttest.com', n: 99 }] },
     { domains: [{ d: 'a.tiktok.com', n: 1 }, { d: 'ixl.com', n: 4 }] },
   ])
-  assert.deepEqual(sites.map((s) => [s.site, s.n]), [['tiktok.com', 8], ['ixl.com', 4], ['khanacademy.org', 4]])
-  assert.deepEqual(sites[0].examples, ['a.tiktok.com', 'b.tiktok.com'])
+  assert.deepEqual(sites.map((s) => [s.site, s.n]), [['a.tiktok.com', 6], ['ixl.com', 4], ['khanacademy.org', 4], ['b.tiktok.com', 2]])
+  assert.deepEqual(sites[0].examples, ['a.tiktok.com'])
   assert.equal(aggregateUsage([{ domains: [{ d: 'x.msftconnecttest.com', n: 1 }] }], { includeNoise: true }).length, 1)
   assert.deepEqual(aggregateUsage([]), [])
+})
+
+
+test('school exceptions cannot be overridden by a narrower deny', () => {
+  const policy: Policy = { rules: [{ kind: 'school', domain: 'school.example.org' }, { kind: 'deny', domain: 'video.school.example.org' }], enabledCategories: [] }
+  assert.equal(decide('video.school.example.org', policy).reason, 'school')
+  assert.equal(decide('video.school.example.org.evil.net', policy).reason, 'default')
+})
+
+test('YouTube remains open even with explicit denies and loaded category lists', () => {
+  for (const domain of ['youtube.com', 'www.youtube.com', 'youtu.be', 'youtube-nocookie.com', 'r1.googlevideo.com', 'i.ytimg.com']) {
+    const policy: Policy = { rules: [{ kind: 'deny', domain }], enabledCategories: ['adult'], listDomains: { adult: new Set([domain]) } }
+    assert.equal(decide(domain, policy).reason, 'system', domain)
+    assert.ok(cleanRule({ kind: 'deny', domain }).error)
+  }
+  assert.equal(decide('youtube.com.evil.net', base).reason, 'default')
+})
+
+test('network diagnostics never merge shared-hosting tenants', () => {
+  const result = aggregateUsage([{ domains: [{ d: 'school.github.io', n: 2 }, { d: 'games.github.io', n: 3 }] }])
+  assert.deepEqual(result.map((x) => x.site), ['games.github.io', 'school.github.io'])
+})
+
+
+test('page-level rules cannot silently become whole-site rules', () => {
+  for (const domain of ['https://example.com/lesson', 'example.com?q=school', 'example.com#math', 'https://user:secret@example.com/', 'example.com:8080']) {
+    assert.ok(cleanRule({ kind: 'school', domain }).error, domain)
+  }
+  assert.equal(cleanRule({ kind: 'school', domain: 'https://lessons.example.com/' }).error, undefined)
 })

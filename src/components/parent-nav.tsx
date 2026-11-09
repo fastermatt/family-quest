@@ -9,7 +9,7 @@ const LINKS = [
   { href: '/dashboard', label: 'Today', Icon: ClipboardCheck, match: ['/dashboard', '/review'] },
   { href: '/tasks', label: 'Chores', Icon: ListChecks, match: ['/tasks'] },
   { href: '/progress', label: 'Progress', Icon: TrendingUp, match: ['/progress'] },
-  { href: '/filters', label: 'Filters', Icon: ShieldCheck, match: ['/filters'] },
+  { href: '/pc', label: 'PC time', Icon: ShieldCheck, match: ['/pc', '/filters'] },
   { href: '/people', label: 'Family', Icon: Users, match: ['/people'] },
 ]
 

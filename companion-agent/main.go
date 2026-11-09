@@ -1,5 +1,6 @@
 // ChoreZap companion agent, stage 1: link this PC to ChoreZap and report what it is.
-// It blocks nothing and changes no settings. Run it as the parent's admin account.
+// It blocks nothing and changes no Windows settings. link/report use admin storage.
+// observe runs WITHOUT elevation in the child's account, saves locally and uploads nothing.
 //
 //	chorezap-agent.exe            link this PC (shows a code), then report
 //	chorezap-agent.exe report     send a fresh report
@@ -40,11 +41,17 @@ func main() {
 		fail(link(*server))
 	case "report":
 		fail(report())
+	case "observe":
+		fs := flag.NewFlagSet("observe", flag.ExitOnError)
+		duration := fs.Duration("duration", 10*time.Minute, "local-only pilot duration (up to 1h)")
+		interval := fs.Duration("sample-every", 2*time.Second, "foreground sampling interval")
+		_ = fs.Parse(flag.Args()[1:])
+		fail(observe(*duration, *interval))
 	case "watch":
 		fs := flag.NewFlagSet("watch", flag.ExitOnError)
 		sampleEvery := fs.Duration("sample-every", 5*time.Minute, "how often to look at the DNS cache")
 		flushEvery := fs.Duration("flush-every", time.Hour, "how often to send a summary")
-		localOnly := fs.Bool("local-only", false, "keep the summary on this PC; upload nothing")
+		localOnly := fs.Bool("local-only", true, "keep the summary on this PC; upload nothing")
 		_ = fs.Parse(flag.Args()[1:])
 		fail(watch(watchOpts{sampleEvery: *sampleEvery, flushEvery: *flushEvery, localOnly: *localOnly}))
 	case "status":
@@ -61,7 +68,7 @@ func main() {
 		fail(removeConfig())
 		fmt.Println("Unlinked on this PC. Also remove it in ChoreZap (Filters > Your PCs).")
 	default:
-		fmt.Println("Unknown command. Try: link, report, watch, status, inventory, unlink")
+		fmt.Println("Unknown command. Try: link, report, observe, watch, status, inventory, unlink")
 		os.Exit(2)
 	}
 }
@@ -80,10 +87,20 @@ func envOr(k, d string) string {
 	return d
 }
 
-var client = &http.Client{Timeout: 20 * time.Second}
+// agentStatus is filled in by watch and included in every report.
+var agentStatus Status
+
+var client = &http.Client{
+	Timeout: 20 * time.Second,
+	// Device credentials and pairing secrets must not follow redirects.
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 func postJSON(url, bearer string, in, out any) (int, error) {
-	body, _ := json.Marshal(in)
+	body, err := json.Marshal(in)
+	if err != nil {
+		return 0, fmt.Errorf("could not encode request: %w", err)
+	}
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
@@ -97,8 +114,18 @@ func postJSON(url, bearer string, in, out any) (int, error) {
 		return 0, err
 	}
 	defer res.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if out != nil {
+	data, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
+	if err != nil {
+		return res.StatusCode, fmt.Errorf("could not read response: %w", err)
+	}
+	if len(data) > 1<<20 {
+		return res.StatusCode, fmt.Errorf("response too large")
+	}
+	if out != nil && res.StatusCode >= 200 && res.StatusCode < 300 {
+		if err := json.Unmarshal(data, out); err != nil {
+			return res.StatusCode, fmt.Errorf("invalid JSON response")
+		}
+	} else if out != nil {
 		_ = json.Unmarshal(data, out)
 	}
 	return res.StatusCode, nil
@@ -124,6 +151,10 @@ func link(server string) error {
 	}
 	if code != 200 {
 		return fmt.Errorf("ChoreZap said no (%d): %s", code, start.Error)
+	}
+
+	if len(start.Code) != 6 || strings.Trim(start.Code, "0123456789") != "" || start.PairID == "" || start.PollSecret == "" || start.ExpiresInSeconds <= 0 || start.ExpiresInSeconds > 600 {
+		return fmt.Errorf("ChoreZap returned invalid pairing details; nothing was linked")
 	}
 
 	fmt.Println()
@@ -165,7 +196,9 @@ func report() error {
 	var res struct {
 		Error string `json:"error"`
 	}
-	code, err := postJSON(cfg.Server+"/api/companion/report", cfg.DeviceToken, collectInventory(), &res)
+	inv := collectInventory()
+	inv.Status = agentStatus
+	code, err := postJSON(cfg.Server+"/api/companion/report", cfg.DeviceToken, inv, &res)
 	if err != nil {
 		return fmt.Errorf("could not reach ChoreZap: %w", err)
 	}
@@ -175,6 +208,6 @@ func report() error {
 	if code != 200 {
 		return fmt.Errorf("report failed (%d): %s", code, res.Error)
 	}
-	fmt.Println("  Report sent. Check ChoreZap > Filters > Your PCs.")
+	logf("report sent")
 	return nil
 }
