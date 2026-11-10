@@ -214,15 +214,26 @@ func supervise() error {
 	if e != nil {
 		return e
 	}
-	dir := filepath.Join(cache, "ChoreZapDesktop", "updates")
+	appDir := filepath.Join(cache, "ChoreZapDesktop")
+	dir := filepath.Join(appDir, "updates")
 	if e = os.MkdirAll(dir, 0700); e != nil {
 		return e
 	}
+	pidFile := filepath.Join(appDir, "supervisor.pid")
 	releaseLock, e := acquireUpdaterInstance()
 	if e != nil {
-		return e
+		// Another supervisor holds the mutex — kill it (handles exe relocation) and retry once.
+		replaceRunningInstance(pidFile)
+		time.Sleep(2 * time.Second)
+		releaseLock, e = acquireUpdaterInstance()
+		if e != nil {
+			return e
+		}
 	}
 	defer releaseLock()
+	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600)
+	// Keep autostart registration current whenever the exe path changes.
+	go registerAutostart()
 	active := exe
 	floor := bundledSequence
 	if r, p, err := readRelease(dir, "active.json"); err == nil && r.Sequence >= floor {

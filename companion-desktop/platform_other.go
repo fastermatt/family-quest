@@ -34,3 +34,4 @@ func classifiedGamesIdle(map[string]bool) (bool, error) {
 
 func startTray(context.Context, string) error { return nil }
 func registerAutostart()                      {}
+func replaceRunningInstance(string)           {}

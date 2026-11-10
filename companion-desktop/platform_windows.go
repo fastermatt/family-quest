@@ -151,6 +151,25 @@ func registerAutostart() {
 		uintptr(uint32(len(valueData)*2)),
 	)
 }
+// replaceRunningInstance kills the supervisor PID recorded in pidFile so a
+// new instance starting from a different location can take over.
+func replaceRunningInstance(pidFile string) {
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return
+	}
+	var pid uint32
+	if _, err = fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil || pid == 0 {
+		return
+	}
+	h, err := syscall.OpenProcess(0x100001, false, pid) // SYNCHRONIZE | PROCESS_TERMINATE
+	if err != nil {
+		return
+	}
+	defer syscall.CloseHandle(h)
+	_ = syscall.TerminateProcess(h, 0)
+	syscall.WaitForSingleObject(h, 3000)
+}
 func openDashboard(url string) error {
 	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Start()
 }
