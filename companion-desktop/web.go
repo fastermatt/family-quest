@@ -36,7 +36,11 @@ func (e *Engine) view() any {
 	}
 	update, _ := os.ReadFile(filepath.Join(e.dir, "updates", "update-status.txt"))
 	familyEnabled, familyAllowed, familyReason := e.familyState(time.Now())
-	return map[string]any{"syncConflicts": e.Ledger.SyncConflicts, "updateStatus": string(update), "countdown": e.countdown(time.Now()), "version": appVersion, "demo": e.demo, "childName": e.Ledger.Policy.ChildName, "linked": e.Ledger.Policy.ClientID != "", "claim": strings.Join(parts, "-"), "day": e.Ledger.Day, "apps": apps, "groups": groups, "gaps": e.Ledger.Gaps, "current": e.Current, "lastUpload": e.LastSync, "lastPolicy": e.LastPolicy, "pending": len(e.Ledger.Outbox), "syncError": e.SyncError, "action": e.Action, "settings": e.Ledger.Policy.Settings, "familyEnabled": familyEnabled, "familyAllowed": familyAllowed, "familyReason": familyReason}
+	pin := e.pin
+	if e.Ledger.Policy.ClientID != "" {
+		pin = ""
+	}
+	return map[string]any{"syncConflicts": e.Ledger.SyncConflicts, "updateStatus": string(update), "countdown": e.countdown(time.Now()), "version": appVersion, "demo": e.demo, "childName": e.Ledger.Policy.ChildName, "linked": e.Ledger.Policy.ClientID != "", "claim": strings.Join(parts, "-"), "pin": pin, "day": e.Ledger.Day, "apps": apps, "groups": groups, "gaps": e.Ledger.Gaps, "current": e.Current, "lastUpload": e.LastSync, "lastPolicy": e.LastPolicy, "pending": len(e.Ledger.Outbox), "syncError": e.SyncError, "action": e.Action, "settings": e.Ledger.Policy.Settings, "familyEnabled": familyEnabled, "familyAllowed": familyAllowed, "familyReason": familyReason}
 }
 func (e *Engine) serve(cancel context.CancelFunc) (string, func(), error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

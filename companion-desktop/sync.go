@@ -146,7 +146,13 @@ func (e *Engine) syncOnce(n *Network) {
 	unlinked := e.Ledger.Policy.ClientID == ""
 	e.mu.Unlock()
 	if unlinked {
-		_, err := n.request("/api/companion/v2/enroll", "", map[string]string{"claimHash": digest(a.Claim), "tokenHash": digest(a.Token), "accountTag": a.AccountTag, "name": a.Name}, nil)
+		body := map[string]string{"claimHash": digest(a.Claim), "tokenHash": digest(a.Token), "accountTag": a.AccountTag, "name": a.Name}
+		e.mu.Lock()
+		if e.pin != "" {
+			body["pinHash"] = digest(e.pin)
+		}
+		e.mu.Unlock()
+		_, err := n.request("/api/companion/v2/enroll", "", body, nil)
 		if err != nil {
 			e.syncFailure(err)
 			return

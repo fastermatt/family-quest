@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -46,6 +48,7 @@ type Engine struct {
 	mu                  sync.Mutex
 	Ledger              Ledger
 	account             Account
+	pin                 string
 	dir                 string
 	before              Observation
 	Current             string
@@ -59,13 +62,20 @@ type Engine struct {
 
 func newEngine(dir string, account Account, demo bool) (*Engine, error) {
 	e := &Engine{dir: dir, account: account, deadlines: map[string]time.Time{}, demo: demo}
-	b, err := os.ReadFile(filepath.Join(dir, "ledger.json"))
+	var pinBytes [2]byte
+	if _, err := rand.Read(pinBytes[:]); err == nil {
+		e.pin = fmt.Sprintf("%04d", binary.BigEndian.Uint16(pinBytes[:])%10000)
+	}
+	ledgerPath := filepath.Join(dir, "ledger.json")
+	b, err := os.ReadFile(ledgerPath)
 	if err == nil {
-		if len(b) > 8<<20 {
-			return nil, fmt.Errorf("saved ledger is too large")
+		bad := len(b) > 8<<20
+		if !bad {
+			bad = json.Unmarshal(b, &e.Ledger) != nil
 		}
-		if err = json.Unmarshal(b, &e.Ledger); err != nil {
-			return nil, fmt.Errorf("saved ledger is damaged; keep it for recovery: %w", err)
+		if bad {
+			_ = os.Rename(ledgerPath, filepath.Join(dir, "ledger.backup.json"))
+			e.Ledger = Ledger{}
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, err

@@ -37,6 +37,12 @@ export async function POST(req:NextRequest){
    const {data,error}=await admin.rpc('companion_v2_claim',{p_claim:sha256(code),p_family:me.family_id,p_child:b.childId})
    if(error)return desktopError('Could not link PC.',503)
    if(data?.error)return desktopError(data.error,409)
+  }else if(b.action==='claim-by-pin'){
+   const pin=String(b.pin).replace(/\s/g,'')
+   if(!/^\d{4}$/.test(pin))throw new Error('Enter the 4-digit code shown on the PC.')
+   const {data,error}=await admin.rpc('companion_v2_claim_by_pin',{p_pin_hash:sha256(pin),p_family:me.family_id,p_child:b.childId})
+   if(error)return desktopError('Could not link PC.',503)
+   if(data?.error)return desktopError(data.error,409)
   }else if(b.action==='classify-games'){
    if(!Array.isArray(b.executables)||!b.executables.length||b.executables.length>100||b.executables.some(e=>typeof e!=='string'))throw new Error('Choose the games to classify.')
    const [activity,existing]=await Promise.all([
