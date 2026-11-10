@@ -48,8 +48,12 @@ func maybeInstall(currentExe string) (bool, error) {
 	pidFile := filepath.Join(local, "ChoreZapDesktop", "supervisor.pid")
 
 	// Kill any running instance so its exe file is not locked.
+	// Try PID file first, then fall back to killing by name (handles the case
+	// where the running binary predates the PID file feature).
 	replaceRunningInstance(pidFile)
-	time.Sleep(time.Second)
+	exec.Command("taskkill", "/F", "/IM", "ChoreZap.exe",
+		"/FI", fmt.Sprintf("PID ne %d", os.Getpid())).Run()
+	time.Sleep(3 * time.Second)
 
 	if err = os.MkdirAll(installDir, 0755); err != nil {
 		return false, fmt.Errorf("cannot create installation folder: %w", err)
