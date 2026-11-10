@@ -190,6 +190,7 @@ func (e *Engine) syncOnce(n *Network) {
 		e.syncFailure(err)
 		return
 	}
+	wasUnlinked := e.Ledger.Policy.ClientID == ""
 	e.Ledger.Policy = policy
 	if policy.FamilyPolicy != nil {
 		e.Ledger.FamilySeen = true
@@ -207,6 +208,9 @@ func (e *Engine) syncOnce(n *Network) {
 		}
 	}
 	e.mu.Unlock()
+	if wasUnlinked {
+		registerAutostart()
+	}
 	if policy.FamilyPolicy != nil && policy.FamilyPolicy.Enabled {
 		n.acceptRevision(policy.FamilyPolicy.Revision, leaseUntil)
 	} else {

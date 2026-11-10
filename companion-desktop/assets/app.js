@@ -3,7 +3,7 @@ const duration=sec=>{sec=Math.max(0,Math.floor(sec||0));return sec>=3600?`${Math
 function render(s){
  renderCountdown(s.countdown);el('update').textContent=s.updateStatus||'Automatic updates · checks while running, applies next start';
  el('status').textContent=s.demo?'SAMPLE DATA · No collection or uploads':s.linked?(s.syncError?'Sync needs attention: '+s.syncError:'Linked · Tracking this Windows account'):(s.syncError||'Waiting for a parent to link this PC');
- el('enroll').hidden=s.linked||s.demo;el('pin').textContent=s.pin||'----';el('code').textContent=s.claim;
+ el('enroll').hidden=s.linked||s.demo;el('linked-welcome').hidden=!s.linked||s.demo;el('pin').textContent=s.pin||'----';el('code').textContent=s.claim;
  el('greeting').textContent=s.childName?`${s.childName}, here’s your day so far.`:'See what filled your day. Make room for what matters.';el('day').textContent=s.day+' · America/Denver';
  el('gaming').textContent=duration(s.groups.game);el('school').textContent=duration(s.groups.school);el('other').textContent=duration(s.groups.other);
  el('allowance').textContent=s.settings.paused?'Entertainment paused by parent':s.settings.gaming_minutes===null?'No shared gaming limit set':duration(Math.max(0,s.settings.gaming_minutes*60-s.groups.game))+' remaining of '+s.settings.gaming_minutes+' min';

