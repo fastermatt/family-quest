@@ -82,6 +82,23 @@ export function eveningPayload(kid: string, chores: PushChore[], hasAnswer: bool
   }
 }
 
+export function gamingAlertPayload(kid: string, pct: 80 | 100, usedMin: number, limitMin: number): PushPayload {
+  if (pct >= 100) {
+    return {
+      title: `${kid} used all ${limitMin}m of gaming`,
+      body: "Time's up. Games will warn or close depending on your settings.",
+      url: '/dashboard',
+      tag: `gaming-100-${kid}`,
+    }
+  }
+  return {
+    title: `${kid} is at 80% of gaming time`,
+    body: `${usedMin}m used of ${limitMin}m — ${limitMin - usedMin}m left today.`,
+    url: '/dashboard',
+    tag: `gaming-80-${kid}`,
+  }
+}
+
 export function submitBody(proofType: string): string {
   switch (proofType) {
     case 'photo':
