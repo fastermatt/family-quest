@@ -214,6 +214,15 @@ func supervise() error {
 	if e != nil {
 		return e
 	}
+	// Self-install if running from a non-standard location; repair if files are missing.
+	launched, e := maybeInstall(exe)
+	if e != nil {
+		return e
+	}
+	if launched {
+		return nil // Relaunched from installed path; this instance's job is done.
+	}
+
 	appDir := filepath.Join(cache, "ChoreZapDesktop")
 	dir := filepath.Join(appDir, "updates")
 	if e = os.MkdirAll(dir, 0700); e != nil {

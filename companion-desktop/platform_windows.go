@@ -101,17 +101,19 @@ func cryptData(data []byte, name string) ([]byte, error) {
 }
 var advapi32 = syscall.NewLazyDLL("advapi32.dll")
 
-// registerAutostart registers ChoreZap to start at login via Task Scheduler
-// (with restart-on-failure so the supervisor is relaunched if killed) and falls
-// back to a registry Run key. The named mutex in acquireInstance prevents a
-// double-start if both triggers fire. Clean exits (code 0, e.g. "Stop app")
-// are never restarted; only non-zero exits (kill / crash) trigger a restart.
 func registerAutostart() {
 	exe, err := os.Executable()
 	if err != nil {
 		return
 	}
-	// Escape single-quotes for the PowerShell string literal.
+	registerAutostartAt(exe)
+}
+
+// registerAutostartAt registers the given exe path to run at login via Task
+// Scheduler (with restart-on-failure) and a registry Run key fallback.
+// The named mutex in acquireInstance prevents a double-start if both fire.
+// Clean exits (code 0, e.g. "Stop app") are never restarted.
+func registerAutostartAt(exe string) {
 	safePath := strings.ReplaceAll(exe, `'`, `''`)
 	ps := `$a=New-ScheduledTaskAction -Execute '` + safePath + `';` +
 		`$t=New-ScheduledTaskTrigger -AtLogOn;` +

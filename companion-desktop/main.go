@@ -26,11 +26,15 @@ func main() {
 func run() error {
 	demo := flag.Bool("demo", false, "sample data; no server connection")
 	worker := flag.Bool("worker", false, "internal updater worker")
+	uninstall := flag.Bool("uninstall", false, "remove ChoreZap from this Windows account")
 	configPath := flag.String("config", "", "bootstrap configuration path")
 	readyPath := flag.String("ready", "", "internal startup marker")
 	launcherPID := flag.Int("launcher-pid", 0, "internal launcher capability marker")
 	flag.Parse()
 	if runtime.GOOS == "windows" && !*demo && !*worker {
+		if *uninstall {
+			return runUninstall()
+		}
 		return supervise()
 	}
 	if !*demo {

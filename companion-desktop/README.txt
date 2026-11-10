@@ -7,42 +7,48 @@ ChoreZap tracks game and app time on this Windows account and enforces
 the daily limits a parent sets at app-family-controls.vercel.app.
 
 
-INSTALL (one time, takes 2 minutes)
-------------------------------------
-1. Copy this entire ChoreZap folder to your child's Documents folder.
-   The app needs both ChoreZap.exe AND server.json in the same folder.
+INSTALL (takes about 1 minute)
+-------------------------------
+1. Open your child's standard Windows account.
 
-2. Open your child's Windows account, go to Documents\ChoreZap, and
-   double-click ChoreZap.exe.
+2. Put both files (ChoreZap.exe and server.json) in the same folder —
+   Downloads, Desktop, anywhere is fine.
 
-3. A dashboard opens in your browser and shows a 4-digit setup code.
+3. Double-click ChoreZap.exe.
+
+   ChoreZap installs itself automatically to:
+       %LOCALAPPDATA%\Programs\ChoreZap\
+
+   A browser tab opens showing a 4-digit setup code.
 
 4. On your phone or another computer, go to:
 
        app-family-controls.vercel.app/pc
 
-   Sign in as a parent, choose your child, and enter the 4-digit code.
+   Sign in as a parent, choose your child, and type the 4-digit code.
 
 5. The dashboard confirms "This PC is linked."
    ChoreZap will now start automatically every time Windows launches.
 
+You can delete the original ChoreZap.exe you downloaded — the app has
+already copied itself to the right place.
 
-NOTES
------
-- Run ChoreZap.exe in the CHILD's Windows account, not a parent account.
-- Keep ChoreZap.exe and server.json in the same folder at all times.
-- App data is stored in %LOCALAPPDATA%\ChoreZapDesktop — not this folder.
-- To uninstall: delete this folder and remove ChoreZap from
-  Settings > Apps, or delete %LOCALAPPDATA%\ChoreZapDesktop manually.
+
+UNINSTALL
+---------
+Go to Settings > Apps, find ChoreZap, and click Uninstall.
+Or run:  ChoreZap.exe --uninstall
 
 
 TROUBLESHOOTING
 ---------------
-"Missing server certificate"  — server.json is missing or in a different
-                                folder from ChoreZap.exe. Put them together.
+"server.json missing"     — Make sure server.json is in the SAME folder
+                            as ChoreZap.exe when you first run it.
 
-"Already running"             — ChoreZap is already open in this account.
-                                Check the system tray.
+"Already running"         — An older version is running. Wait a few seconds
+                            and try again; ChoreZap replaces itself automatically.
 
-Dashboard shows no data       — Wait 30 seconds after opening a game.
-                                ChoreZap samples activity every few seconds.
+Dashboard shows no data   — Wait 30 seconds after opening a game.
+                            ChoreZap samples activity every few seconds.
+
+Killed from Task Manager  — Windows will restart ChoreZap within 60 seconds.
