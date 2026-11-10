@@ -101,11 +101,32 @@ func cryptData(data []byte, name string) ([]byte, error) {
 }
 var advapi32 = syscall.NewLazyDLL("advapi32.dll")
 
+// registerAutostart registers ChoreZap to start at login via Task Scheduler
+// (with restart-on-failure so the supervisor is relaunched if killed) and falls
+// back to a registry Run key. The named mutex in acquireInstance prevents a
+// double-start if both triggers fire. Clean exits (code 0, e.g. "Stop app")
+// are never restarted; only non-zero exits (kill / crash) trigger a restart.
 func registerAutostart() {
 	exe, err := os.Executable()
 	if err != nil {
 		return
 	}
+	// Escape single-quotes for the PowerShell string literal.
+	safePath := strings.ReplaceAll(exe, `'`, `''`)
+	ps := `$a=New-ScheduledTaskAction -Execute '` + safePath + `';` +
+		`$t=New-ScheduledTaskTrigger -AtLogOn;` +
+		`$s=New-ScheduledTaskSettingsSet -RestartCount 10 ` +
+		`-RestartInterval (New-TimeSpan -Minutes 1) ` +
+		`-ExecutionTimeLimit 0 ` +
+		`-DisallowStartIfOnBatteries $false ` +
+		`-StopIfGoingOnBatteries $false;` +
+		`$p=New-ScheduledTaskPrincipal ` +
+		`-UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) ` +
+		`-LogonType Interactive -RunLevel Limited;` +
+		`Register-ScheduledTask -TaskName ChoreZap -Action $a -Trigger $t -Settings $s -Principal $p -Force`
+	exec.Command("powershell", "-NonInteractive", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps).Run()
+
+	// Registry Run key as a belt-and-suspenders fallback.
 	subkey, _ := syscall.UTF16PtrFromString(`SOFTWARE\Microsoft\Windows\CurrentVersion\Run`)
 	valueName, _ := syscall.UTF16PtrFromString("ChoreZap")
 	valueData := syscall.StringToUTF16(`"` + exe + `"`)
