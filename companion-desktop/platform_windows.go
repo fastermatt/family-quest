@@ -155,58 +155,6 @@ func registerAutostartAt(exe string) {
 	)
 }
 
-// replaceRunningInstance only stops the recorded installed supervisor after
-// checking owner SID, session and exact image path. A reused PID or forged
-// pidfile cannot select an unrelated process.
-func replaceRunningInstance(pidFile string) {
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return
-	}
-	var pid uint32
-	if _, err = fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil || pid == 0 {
-		return
-	}
-	if pid == uint32(os.Getpid()) {
-		return
-	}
-	installed, err := installedExePath()
-	if err != nil {
-		return
-	}
-	h, err := syscall.OpenProcess(0x101001, false, pid) // QUERY_LIMITED_INFORMATION | SYNCHRONIZE | TERMINATE
-	if err != nil {
-		return
-	}
-	defer syscall.CloseHandle(h)
-	mine, err := syscall.GetCurrentProcess()
-	if err != nil {
-		return
-	}
-	mySID, err := processSID(mine)
-	if err != nil {
-		return
-	}
-	owner, err := processSID(h)
-	if err != nil || owner != mySID {
-		return
-	}
-	var currentSession, targetSession uint32
-	currentPID, _, _ := observationCurrentPID.Call()
-	if ok, _, _ := observationProcessSession.Call(currentPID, uintptr(unsafe.Pointer(&currentSession))); ok == 0 {
-		return
-	}
-	if ok, _, _ := observationProcessSession.Call(uintptr(pid), uintptr(unsafe.Pointer(&targetSession))); ok == 0 || targetSession != currentSession {
-		return
-	}
-	var path [32768]uint16
-	size := uint32(len(path))
-	if ok, _, _ := observationImageName.Call(uintptr(h), 0, uintptr(unsafe.Pointer(&path[0])), uintptr(unsafe.Pointer(&size))); ok == 0 || !sameInstalledExecutable(syscall.UTF16ToString(path[:size]), installed) {
-		return
-	}
-	_ = syscall.TerminateProcess(h, 0)
-	syscall.WaitForSingleObject(h, 3000)
-}
 func openDashboard(url string) error {
 	if browser := findAppModeBrowser(); browser != "" {
 		return exec.Command(browser, "--app="+url, "--window-size=440,760", "--no-first-run", "--no-default-browser-check").Start()

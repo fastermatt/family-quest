@@ -44,12 +44,11 @@ func maybeInstall(currentExe string) (bool, error) {
 
 	// --- Fresh install or relocation ---
 	installDir := filepath.Dir(target)
-	local := os.Getenv("LOCALAPPDATA")
-	pidFile := filepath.Join(local, "ChoreZapDesktop", "supervisor.pid")
-
-	// Replace only the verified same-account installed supervisor.
-	replaceRunningInstance(pidFile)
-	time.Sleep(3 * time.Second)
+	release, err := acquireStoppedApp()
+	if err != nil {
+		return false, err
+	}
+	defer release()
 
 	if err = os.MkdirAll(installDir, 0755); err != nil {
 		return false, fmt.Errorf("cannot create installation folder: %w", err)
@@ -75,6 +74,7 @@ func maybeInstall(currentExe string) (bool, error) {
 
 	registerAutostartAt(target)
 	registerUninstaller(target)
+	release() // The new launcher must be able to acquire both mutexes.
 
 	// Relaunch from the installed path; this instance is done.
 	cmd := exec.Command(target)
@@ -160,15 +160,11 @@ func runUninstall() error {
 	if err != nil {
 		return err
 	}
-	local := os.Getenv("LOCALAPPDATA")
-	if local == "" {
-		return fmt.Errorf("LOCALAPPDATA not set")
+	release, err := acquireStoppedApp()
+	if err != nil {
+		return err
 	}
-
-	// Kill running tracker.
-	pidFile := filepath.Join(local, "ChoreZapDesktop", "supervisor.pid")
-	replaceRunningInstance(pidFile)
-	time.Sleep(time.Second)
+	defer release()
 
 	// Remove scheduled task.
 	exec.Command("schtasks", "/Delete", "/TN", "ChoreZap", "/F").Run() //nolint

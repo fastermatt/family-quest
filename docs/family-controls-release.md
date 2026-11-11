@@ -1,4 +1,4 @@
-# ChoreZap family pilot — 0.3.6 release
+# ChoreZap family pilot — 0.3.7 release
 
 November 11, 2026 (Denver). (Codex)
 
@@ -14,14 +14,14 @@ Saved settings: 120 earned minutes Monday–Friday, 120 weekend minutes, one par
 - Browser history with timestamps and YouTube video links, explicit Edge/Chrome coverage and limits; legacy totals are labelled. History is not proof of watching or attention. Query strings are removed except a YouTube video ID. The child sees a collection notice.
 - Correct app usage joins and allowance display. Classified running games can consume the shared budget in the background; school and browser apps stay available. Foreground game closing requires the optional close mode and warning. Concurrent per-game accounting remains approximate.
 - Linked Stop requests verify the parent PIN online. Hashes stay server-side; the child ledger receives only whether a PIN is configured. Cross-device attempt limits are atomic. Damaged ledgers fail startup and remain available for recovery.
-- Windows per-user installation, safer scoped process replacement/uninstall, signed sequence 15 updates, launcher version reporting, fresh-policy and game-idle checks before activation. A 0.3.6 launcher installation is required once; subsequent compatible workers support remote activation. A completed command is not proof of installation: verify the subsequent version heartbeat.
+- Windows per-user installation, safer scoped process replacement/uninstall, signed sequence 16 updates, launcher version reporting, fresh-policy and game-idle checks before activation. A 0.3.7 launcher installation is required once; subsequent compatible workers support remote activation. A completed command is not proof of installation: verify the subsequent version heartbeat.
 - Closed anonymous/authenticated access to an existing profile view exposing account tokens; rotated the five Carlson session tokens. Existing PINs and device pairing remain unchanged. Everyone must sign in again. No claim is made about historical access.
 
 ## Install and verify
 
-Download `/downloads/ChoreZap-Windows-x64.zip` from the hosted app or PC maintenance page. Extract all files together, close games, and run ChoreZap.exe in the child’s Windows account. It installs to `%LOCALAPPDATA%\Programs\ChoreZap`; existing usage and pairing are preserved. New installs show a setup code to enter on the parent PC page. The EXE is not Authenticode signed; update manifests are Ed25519 signed.
+Download `/downloads/ChoreZap-Windows-x64.zip` from the hosted app or PC maintenance page. Extract all files together, close games, stop the existing ChoreZap app from its dashboard, and run ChoreZap.exe in the child’s Windows account. It installs to `%LOCALAPPDATA%\Programs\ChoreZap`; existing usage and pairing are preserved. New installs show a setup code to enter on the parent PC page. The EXE is not Authenticode signed; update manifests are Ed25519 signed.
 
-On the parent PC page verify worker and launcher version 0.3.6, a fresh check-in, diagnostics, and the labelled countdown demo. Check school/browser/YouTube access while a classified game is restricted. Test a minimized game, reboot, disconnect/reconnect, a supervised newer signed update and failed-start rollback. Confirm no game is interrupted by update activation. Only then enable family rules and choose reminder or close mode. Initial installer replacement may lose the last few seconds of unsaved usage; run it while games are closed.
+On the parent PC page verify worker and launcher version 0.3.7, a fresh check-in, diagnostics, and the labelled countdown demo. Check school/browser/YouTube access while a classified game is restricted. Test a minimized game, reboot, disconnect/reconnect, a supervised newer signed update and failed-start rollback. Confirm no game is interrupted by update activation. Only then enable family rules and choose reminder or close mode. The installer requires the existing launcher and tracker to be stopped before replacing files; it refuses a running installation without killing either process. Use the dashboard Stop app action first.
 
 ## Boundaries
 

@@ -1,4 +1,4 @@
-# ChoreZap Desktop 0.3.6 — cooperative family controls pilot
+# ChoreZap Desktop 0.3.7 — cooperative family controls pilot
 
 The installable, per-account Windows app records foreground usage and one running classified game at a time, receives short family game policies, and can close only a currently foreground classified game after a saved 30-second warning when close mode is selected. Family game permission expires locally and remains denied after a restart until a fresh policy is accepted. School and browser apps remain exempt. Stop requests for linked PCs require online parent PIN verification, and the PIN is not saved in the child ledger or dashboard. A damaged ledger is preserved and stops startup instead of resetting the allowance. This is a cooperative app, not a protected service, native content filter, or session lock.
 
@@ -6,7 +6,7 @@ The per-user installer copies the stable launcher and public server bootstrap in
 
 A countdown result of `requested` is only a durable receipt, not proof that the overlay appeared. A crash after the receipt is saved can skip the display; the parent can send a new test command. Only the native window's visibility signal reports `displayed`.
 
-An older stable launcher needs this package installed once to gain remote activation. The initial installer stops the current app and can lose the last few seconds of unsaved usage. Native Windows installation, process inventory, overlay visibility, remote activation, and rollback still require a real PC pilot test. No live release is implied by a local build.
+An older stable launcher needs this package installed once to gain remote activation. Before installing or uninstalling, use Stop app in the current dashboard and wait for its tray icon to disappear. Setup refuses to change files while the launcher or worker is running; it never kills them. If Stop app fails, reboot, then stop ChoreZap again after sign-in before retrying; sign-in startup can relaunch it. Native Windows installation, process inventory, overlay visibility, remote activation, and rollback still require a real PC pilot test. No live release is implied by a local build.
 
 If startup reports a damaged ledger, preserve `%LOCALAPPDATA%\ChoreZapDesktop\ledger.json` and a copy of its exact bytes. Do not delete it or use a fresh ledger to regain minutes. A parent can review the server's uploaded activity and dated grants, then restore a verified local backup or seek support. Activity that was never uploaded may be unrecoverable; the app stops rather than silently resetting its local allowance. The child's school/browser apps are not blocked by this startup error.
 

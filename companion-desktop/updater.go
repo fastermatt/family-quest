@@ -19,7 +19,7 @@ import (
 
 const updatePublicKey = "OhEnZ13gUc/92sAQ1BOLlb2z8OM2Lfj+MV6az7sMz8k="
 const releaseSequence = 6
-const bundledSequence = 15
+const bundledSequence = 16
 const maxUpdateSize = 32 << 20
 
 var errRemoteActivation = errors.New("verified update restart requested")
@@ -258,13 +258,7 @@ func supervise() error {
 	pidFile := filepath.Join(appDir, "supervisor.pid")
 	releaseLock, e := acquireUpdaterInstance()
 	if e != nil {
-		// Another supervisor holds the mutex — kill it (handles exe relocation) and retry once.
-		replaceRunningInstance(pidFile)
-		time.Sleep(2 * time.Second)
-		releaseLock, e = acquireUpdaterInstance()
-		if e != nil {
-			return e
-		}
+		return fmt.Errorf("ChoreZap is already running; use its existing dashboard or Stop app before starting another copy")
 	}
 	defer releaseLock()
 	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600)

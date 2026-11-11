@@ -12,6 +12,11 @@ INSTALL (takes about 1 minute)
 -------------------------------
 1. Open your child's standard Windows account.
 
+   If ChoreZap is already installed, open its dashboard, choose Stop app,
+   and wait for the tray icon to disappear before installing this update.
+   A parent PIN and an online connection may be required. Setup refuses
+   to replace a running launcher or worker.
+
 2. Put both files (ChoreZap.exe and server.json) in the same folder —
    Downloads, Desktop, anywhere is fine.
 
@@ -29,7 +34,7 @@ INSTALL (takes about 1 minute)
    Sign in as a parent, choose your child, and type the 4-digit code.
 
 5. The dashboard confirms "This PC is linked."
-   ChoreZap will now start automatically every time Windows launches.
+   ChoreZap will now start automatically when this account signs in.
 
 You can delete the original ChoreZap.exe you downloaded — the app has
 already copied itself to the right place.
@@ -39,6 +44,9 @@ UNINSTALL
 ---------
 Go to Settings > Apps, find ChoreZap, and click Uninstall.
 Or run:  ChoreZap.exe --uninstall
+First use Stop app and wait for the tray icon to disappear. Uninstall
+refuses to proceed while ChoreZap is running. A reboot alone may relaunch
+ChoreZap at sign-in; stop it again before retrying.
 
 
 TROUBLESHOOTING
@@ -46,8 +54,9 @@ TROUBLESHOOTING
 "server.json missing"     — Make sure server.json is in the SAME folder
                             as ChoreZap.exe when you first run it.
 
-"Already running"         — An older version is running. Wait a few seconds
-                            and try again; ChoreZap replaces itself automatically.
+"Already running"         — Open the current dashboard, choose Stop app,
+                            wait for the tray icon to disappear, then retry.
+                            If needed, reboot and stop it again after sign-in.
 
 Dashboard shows no data   — Wait 30 seconds after opening a game.
                             ChoreZap samples activity every few seconds.

@@ -35,4 +35,3 @@ func runningClassifiedGame(map[string]bool) (string, uint32) { return "", 0 }
 
 func startTray(context.Context, string) error { return nil }
 func registerAutostart()                      {}
-func replaceRunningInstance(string)           {}
