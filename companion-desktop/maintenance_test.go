@@ -66,6 +66,26 @@ func TestApplyUpdateNeedsNewLauncher(t *testing.T) {
 		t.Fatal(outcome)
 	}
 }
+func TestRemoteActivationRequiresCompatibleLauncherVersion(t *testing.T) {
+	e := testEngine(t)
+	e.launcherPID = 123
+	for _, version := range []string{"", "0.3.5", "0.3.6-extra", "1.2"} {
+		e.launcherVersion = version
+		if e.remoteActivationAvailable() {
+			t.Fatal("unsupported launcher accepted", version)
+		}
+	}
+	for _, version := range []string{"0.3.6", "0.3.7", "1.0.0"} {
+		e.launcherVersion = version
+		if !e.remoteActivationAvailable() {
+			t.Fatal("compatible launcher rejected", version)
+		}
+	}
+	e.launcherPID = 0
+	if e.remoteActivationAvailable() {
+		t.Fatal("version without launcher handshake accepted")
+	}
+}
 
 func TestAcknowledgedActivationSurvivesWorkerRestart(t *testing.T) {
 	e := testEngine(t)

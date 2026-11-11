@@ -15,17 +15,19 @@ export async function GET(req:NextRequest){
  const [clients,rules,settings,batches,browse]=await Promise.all([
   admin.from('companion_clients').select('id,name,last_seen_at,version').eq('family_id',me.family_id).eq('child_id',childId).is('revoked_at',null),
   admin.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',me.family_id).eq('child_id',childId),
-  admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin,blocked_executables').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
+  admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin_hash,blocked_executables').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
   admin.from('companion_activity').select('apps,period_end').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).order('period_end',{ascending:false}).limit(1500),
-  admin.from('companion_browse_history').select('entries').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).maybeSingle(),
+  admin.from('companion_browse_history').select('entries,coverage').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).maybeSingle(),
  ])
  if(clients.error||rules.error||settings.error||batches.error)return desktopError('Could not load PC activity.',503)
  let family
  try{family=await familyOverview(admin,me.family_id,childId)}catch{return desktopError("Could not load family game rules.",503)}
  const apps=aggregateApps(batches.data??[])
  const effective=effectiveGameRules(apps,rules.data??[])
- const baseSettings={gaming_minutes:null,paused:false,mode:'warn',stop_pin:null,blocked_executables:[]}
- return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...baseSettings,...(settings.data??{}),gaming_minutes:family.game.grantedSeconds/60}:{...baseSettings,...(settings.data??{})},apps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay(),browse:browse.data?.entries??[]},{headers:{'Cache-Control':'no-store'}})
+ const rawSettings=settings.data
+ const baseSettings={gaming_minutes:rawSettings?.gaming_minutes??null,paused:rawSettings?.paused??false,mode:rawSettings?.mode??'warn',blocked_executables:rawSettings?.blocked_executables??[],stop_pin_required:!!rawSettings?.stop_pin_hash}
+ const displayApps=apps.map(app=>({...app,category:effective.find(rule=>rule.executable===app.executable)?.category??'other'}))
+ return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...baseSettings,gaming_minutes:family.game.grantedSeconds/60}:baseSettings,apps:displayApps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay(),browse:browse.error?{entries:[],coverage:{status:'unavailable',browsers:[]}}:{entries:browse.data?.entries??[],coverage:browse.data?.coverage??null}},{headers:{'Cache-Control':'no-store'}})
 }
 export async function POST(req:NextRequest){
  try{
@@ -76,7 +78,7 @@ export async function POST(req:NextRequest){
   }else if(b.action==='set-stop-pin'){
    const pin=b.stopPin===null||b.stopPin===''?null:String(b.stopPin)
    if(pin!==null&&!/^\d{4}$/.test(pin))throw new Error('PIN must be exactly 4 digits, or leave blank to remove.')
-   const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,stop_pin:pin},{onConflict:'family_id,child_id'})
+   const {error}=await admin.rpc('companion_set_stop_pin',{p_family:me.family_id,p_child:b.childId,p_actor:me.id,p_pin:pin})
    if(error)return desktopError('Could not save stop PIN.',503)
   }else if(b.action==='set-blocked-apps'){
    if(!Array.isArray(b.executables)||b.executables.some((e:unknown)=>typeof e!=='string'||!/^[\w.\-+ ]+\.exe$/i.test(e as string)))throw new Error('Each blocked app must be a .exe filename.')

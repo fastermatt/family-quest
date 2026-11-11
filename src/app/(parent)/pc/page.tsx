@@ -3,11 +3,11 @@ import {useState} from 'react'
 import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query'
 import {Brand} from '@/components/brand'
 import {DeviceMaintenance} from '@/components/family-controls/device-maintenance'
+import {BrowserHistory, type BrowseData} from '@/components/family-controls/browser-history'
 import type {GameSuggestion} from '@/lib/companion/game-suggestions'
 interface Rule{executable:string;label:string;category:'game'|'school'|'other';daily_minutes:number|null}
-interface Settings{gaming_minutes:number|null;paused:boolean;mode:'warn'|'close';stop_pin:string|null;blocked_executables:string[]}
-interface BrowseEntry{domain:string;category:string;title?:string;seconds:number}
-interface Data{familyRulesEnabled?:boolean;familyReason?:string;suggestions?:GameSuggestion[];childId?:string;children:{id:string;name:string}[];clients:{id:string;name:string;last_seen_at:string|null;version:string|null}[];apps:{executable:string;seconds:number}[];rules:Rule[];settings:Settings;browse:BrowseEntry[];lastUpload?:string;day?:string}
+interface Settings{gaming_minutes:number|null;paused:boolean;mode:'warn'|'close';stop_pin_required:boolean;blocked_executables:string[]}
+interface Data{familyRulesEnabled?:boolean;familyReason?:string;suggestions?:GameSuggestion[];childId?:string;children:{id:string;name:string}[];clients:{id:string;name:string;last_seen_at:string|null;version:string|null}[];apps:{executable:string;seconds:number}[];rules:Rule[];settings:Settings;browse:BrowseData;lastUpload?:string;day?:string}
 const time=(s:number)=>`${Math.floor(s/3600)?Math.floor(s/3600)+'h ':''}${Math.floor(s%3600/60)}m`
 async function request(body:unknown){const r=await fetch('/api/parent/companion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error??'Could not save.');return d}
 export default function PCPage(){
@@ -17,15 +17,15 @@ export default function PCPage(){
  if(q.isLoading)return <p role="status">Loading PC time…</p>
  if(q.isError||!q.data)return <p role="alert">Could not load PC time. <button className="btn btn-quiet" onClick={()=>q.refetch()}>Retry</button></p>
  const d=q.data,id=d.childId,ruleOf=(name:string)=>d.rules.find(r=>r.executable===name),gaming=d.apps.reduce((sum,a)=>sum+(ruleOf(a.executable)?.category==='game'?a.seconds:0),0)
- const submit=(body:Record<string,unknown>)=>save.mutate({...body,childId:id})
+ const submit=(body:Record<string,unknown>,onSuccess?:()=>void)=>save.mutate({...body,childId:id},{onSuccess})
  return <div className="space-y-7"><Brand/><header><h1 className="mt-5 text-[30px] font-bold">PC time</h1><p style={{color:'var(--ink-2)'}}>Understand the day. Set the allowance. Keep learning open.</p></header>
  <label className="block">Child<select className="field mt-2" value={id??''} onChange={e=>setChildId(e.target.value)}>{d.children.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
  {notice&&<p role="status" className="rounded-xl p-3 text-[14px]" style={{background:'var(--surface-2)'}}>{notice}</p>}
  {!id?<p>Add a child in Family first.</p>:<>
  <section className="panel p-5"><p className="text-[14px]" style={{color:'var(--ink-2)'}}>GAMING TODAY · {d.day??'No data'}</p><p className="my-2 text-[42px] font-bold" style={{color:'var(--accent)'}}>{time(gaming)}</p><p style={{color:'var(--ink-2)'}}>{d.settings.gaming_minutes===null?'No shared limit':`${Math.max(0,Math.floor(d.settings.gaming_minutes-gaming/60))} minutes left of ${d.settings.gaming_minutes}`}</p><p className="mt-3 text-[13px]" style={{color:'var(--ink-3)'}}>{d.lastUpload?'Last activity upload '+new Date(d.lastUpload).toLocaleString('en-US',{timeZone:'America/Denver',timeZoneName:'short'}):'No foreground activity uploaded yet.'} · Updates about every 5 minutes.</p></section>
- {!!d.browse?.length&&<BrowseHistory key={id+d.day} entries={d.browse}/>}
+ <BrowserHistory key={id+d.day} browse={d.browse} day={d.day}/>
  <LimitEditor familyRulesEnabled={d.familyRulesEnabled??false} key={id+JSON.stringify(d.settings)} settings={d.settings} busy={save.isPending} onSave={s=>submit({action:'limits',gamingMinutes:s.gaming_minutes,paused:s.paused,mode:s.mode})}/>
- <StopPinEditor key={id+(d.settings.stop_pin??'')} stopPin={d.settings.stop_pin} busy={save.isPending} onSave={pin=>submit({action:'set-stop-pin',stopPin:pin})}/>
+ <StopPinEditor key={id+String(d.settings.stop_pin_required)} configured={d.settings.stop_pin_required??false} busy={save.isPending} onSave={(pin,onSuccess)=>submit({action:'set-stop-pin',stopPin:pin},onSuccess)}/>
  <BlockedAppsEditor key={id+JSON.stringify(d.settings.blocked_executables)} blocked={d.settings.blocked_executables??[]} busy={save.isPending} onSave={executables=>submit({action:'set-blocked-apps',executables})}/>
  {!!d.suggestions?.length&&<GameReview key={id+JSON.stringify(d.suggestions)} suggestions={d.suggestions} busy={save.isPending} onSave={executables=>submit({action:'classify-games',executables})}/>}
  <section><h2 className="text-[20px] font-semibold">Applications today</h2><p className="mb-3 text-[14px]" style={{color:'var(--ink-2)'}}>Recognized apps appear above for quick review. Your saved choices always take priority. Open an app below to adjust its category or limit.</p>{!d.apps.length&&<p>No application time yet. Link the PC and let it run for a few minutes.</p>}{d.apps.map(a=><AppEditor key={id+a.executable+JSON.stringify(ruleOf(a.executable))} app={{...a,rule:ruleOf(a.executable),suggestion:d.suggestions?.find(s=>s.executable===a.executable)}} busy={save.isPending} onSave={r=>submit({action:'app',...r})}/>)}</section>
@@ -33,7 +33,7 @@ export default function PCPage(){
  <section><h2 className="text-[20px] font-semibold">Linked accounts</h2>{d.clients.map(c=><div key={c.id} className="row my-3 p-4"><strong>{c.name}</strong><p className="text-[13px]" style={{color:'var(--ink-2)'}}>App {c.version??'waiting'} · {c.last_seen_at?'Last upload '+new Date(c.last_seen_at).toLocaleString('en-US',{timeZone:'America/Denver',timeZoneName:'short'}):'No upload yet'}</p><button className="btn btn-quiet mt-2" disabled={save.isPending} onClick={()=>{if(confirm('Unlink this Windows account? Uploads stop; data already on the PC stays there.'))submit({action:'revoke',clientId:c.id})}}>Unlink account</button></div>)}</section>
  <DeviceMaintenance childId={id} />
  </>}
- <p className="text-[14px]" style={{color:'var(--wait)'}}>School apps, browsers and YouTube stay available. Game closing is a standard-user control and can be bypassed by stopping the app. Windows enforcement must be tested on the PC. Chore gates, browser history and automatic updates are not included yet.</p><p className="text-[13px]" style={{color:'var(--ink-2)'}}>The activity above is uploaded foreground history. Family game rules and today&apos;s earned minutes are shown separately.</p><div className="flex flex-wrap gap-2"><a className="btn btn-primary" href="/family-controls">Family game rules & jobs</a><a className="btn btn-quiet" href="/filters">Website rules & diagnostics</a></div></div>
+ <p className="text-[14px]" style={{color:'var(--wait)'}}>School apps, browsers and YouTube stay available. This PC pilot runs in the child&apos;s Windows account; stopping that app can bypass game closing. The stop PIN and blocked-app list are cooperative controls, not a protected native service. Verify behavior on the actual PC.</p><p className="text-[13px]" style={{color:'var(--ink-2)'}}>Application time is uploaded foreground history. Browser visits and updates depend on the installed PC version and its connection. Family game rules and today&apos;s earned minutes are shown separately.</p><div className="flex flex-wrap gap-2"><a className="btn btn-primary" href="/family-controls">Family game rules & jobs</a><a className="btn btn-quiet" href="/filters">Website rules & diagnostics</a></div></div>
 }
 function LimitEditor({settings,busy,onSave,familyRulesEnabled}:{familyRulesEnabled:boolean;settings:Settings;busy:boolean;onSave:(s:Settings)=>void}){
  const[s,set]=useState(settings)
@@ -41,56 +41,17 @@ function LimitEditor({settings,busy,onSave,familyRulesEnabled}:{familyRulesEnabl
 }
 function AppEditor({app,busy,onSave}:{app:{executable:string;seconds:number;rule?:Rule;suggestion?:GameSuggestion};busy:boolean;onSave:(r:{executable:string;label:string;category:Rule['category'];dailyMinutes:number|null})=>void}){
  const[r,set]=useState(app.rule??{executable:app.executable,label:app.suggestion?.label??app.executable,category:'other' as const,daily_minutes:null})
- return <details className="row my-3 p-4"><summary className="cursor-pointer"><span className="font-semibold break-words">{app.rule?.label??app.suggestion?.label??app.executable}</span><span className="float-right ml-3">{time(app.seconds)}</span><p className="mt-1 text-[13px]" style={{color:'var(--ink-2)'}}>{app.rule?.category==='game'?'Game':app.rule?.category==='school'?'School · always available':app.rule?'Other':app.suggestion?'Suggested game · awaiting your review':'Not classified'} · Edit</p></summary><div className="mt-4 space-y-3"><p className="break-all text-[13px]">{app.executable}</p><label className="block text-[14px]">Display name<input className="field mt-1" value={r.label} maxLength={60} onChange={e=>set({...r,label:e.target.value})}/></label><label className="block text-[14px]">Category<select className="field mt-1" value={r.category} onChange={e=>set({...r,category:e.target.value as Rule['category']})}><option value="other">Other / unclassified</option><option value="game">Game</option><option value="school">School — always available</option></select></label>{r.category==='game'&&<label className="block text-[14px]">This game's daily minutes (blank = shared allowance only)<input type="number" min={0} max={1440} className="field mt-1" value={r.daily_minutes??''} onChange={e=>set({...r,daily_minutes:e.target.value===''?null:Number(e.target.value)})}/></label>}<button className="btn btn-quiet" disabled={busy} onClick={()=>onSave({executable:r.executable,label:r.label,category:r.category,dailyMinutes:r.daily_minutes})}>Save application</button></div></details>
+ return <details className="row my-3 p-4"><summary className="cursor-pointer"><span className="font-semibold break-words">{app.rule?.label??app.suggestion?.label??app.executable}</span><span className="float-right ml-3">{time(app.seconds)}</span><p className="mt-1 text-[13px]" style={{color:'var(--ink-2)'}}>{app.rule?.category==='game'?'Game':app.rule?.category==='school'?'School · always available':app.rule?'Other':app.suggestion?'Suggested game · awaiting your review':'Not classified'} · Edit</p></summary><div className="mt-4 space-y-3"><p className="break-all text-[13px]">{app.executable}</p><label className="block text-[14px]">Display name<input className="field mt-1" value={r.label} maxLength={60} onChange={e=>set({...r,label:e.target.value})}/></label><label className="block text-[14px]">Category<select className="field mt-1" value={r.category} onChange={e=>set({...r,category:e.target.value as Rule['category']})}><option value="other">Other / unclassified</option><option value="game">Game</option><option value="school">School — always available</option></select></label>{r.category==='game'&&<label className="block text-[14px]">This game&apos;s daily minutes (blank = shared allowance only)<input type="number" min={0} max={1440} className="field mt-1" value={r.daily_minutes??''} onChange={e=>set({...r,daily_minutes:e.target.value===''?null:Number(e.target.value)})}/></label>}<button className="btn btn-quiet" disabled={busy} onClick={()=>onSave({executable:r.executable,label:r.label,category:r.category,dailyMinutes:r.daily_minutes})}>Save application</button></div></details>
 }
 
-const CAT_LABEL:{[k:string]:string}={youtube:'YouTube',gaming:'Gaming sites',social:'Social media',school:'School',other:'Other browsing'}
-const CAT_ORDER=['youtube','gaming','social','school','other']
-
-function BrowseHistory({entries}:{entries:BrowseEntry[]}){
- const[expanded,setExpanded]=useState<string|null>(null)
- // group by category, then by domain+title within category
- const byCat=CAT_ORDER.map(cat=>{
-  const rows=entries.filter(e=>e.category===cat)
-  if(!rows.length)return null
-  const total=rows.reduce((s,e)=>s+e.seconds,0)
-  return {cat,total,rows:[...rows].sort((a,b)=>b.seconds-a.seconds)}
- }).filter(Boolean) as {cat:string;total:number;rows:BrowseEntry[]}[]
- if(!byCat.length)return null
- const grandTotal=entries.reduce((s,e)=>s+e.seconds,0)
- return <section className="panel p-5 space-y-4">
-  <div><h2 className="text-[20px] font-semibold">Web history today</h2><p className="text-[13px] mt-1" style={{color:'var(--ink-2)'}}>From Edge and Chrome on the PC · updates every 30 minutes</p></div>
-  <div className="space-y-2">
-   {byCat.map(({cat,total,rows})=>{
-    const pct=grandTotal>0?Math.round(total/grandTotal*100):0
-    const isYT=cat==='youtube'
-    return <div key={cat}>
-     <button className="w-full text-left" onClick={()=>setExpanded(expanded===cat?null:cat)}>
-      <div className="flex items-baseline justify-between"><span className="font-medium text-[15px]">{CAT_LABEL[cat]}</span><span className="text-[13px]" style={{color:'var(--ink-2)'}}>{time(total)} · {pct}%</span></div>
-      <div className="mt-1 h-2 rounded-full overflow-hidden" style={{background:'var(--surface-3)'}}><div className="h-full rounded-full" style={{width:pct+'%',background:cat==='youtube'?'#ff0000':cat==='gaming'?'var(--teal)':cat==='social'?'var(--accent)':cat==='school'?'var(--school)':'#5b6880'}}/></div>
-     </button>
-     {expanded===cat&&<ul className="mt-2 space-y-1 pl-2">
-      {rows.slice(0,isYT?20:10).map((e,i)=><li key={i} className="flex items-baseline justify-between text-[13px]">
-       <span className="min-w-0 mr-3 truncate" style={{color:'var(--ink-1)'}}>{e.title||e.domain}</span>
-       <span className="shrink-0" style={{color:'var(--ink-2)'}}>{time(e.seconds)}</span>
-      </li>)}
-      {rows.length>(isYT?20:10)&&<li className="text-[12px]" style={{color:'var(--ink-3)'}}>+{rows.length-(isYT?20:10)} more</li>}
-     </ul>}
-    </div>
-   })}
-  </div>
-  <p className="text-[12px]" style={{color:'var(--ink-3)'}}>Browsing history is from the child&apos;s Windows user account only. Incognito/private tabs are not included.</p>
- </section>
-}
-function StopPinEditor({stopPin,busy,onSave}:{stopPin:string|null;busy:boolean;onSave:(pin:string|null)=>void}){
- const[pin,setPin]=useState(stopPin??'')
- const[confirm,setConfirm]=useState(stopPin??'')
- const changed=pin!==(stopPin??'')||confirm!==(stopPin??'')
- return <section className="panel space-y-4 p-5"><h2 className="text-[20px] font-semibold">Stop PIN</h2><p className="text-[14px]" style={{color:'var(--ink-2)'}}>Require a 4-digit PIN before the desktop app can be stopped. Leave blank to allow stopping freely.</p>
- <label className="block text-[14px]">PIN (4 digits, or leave blank to remove)<input className="field mt-2" type="password" inputMode="numeric" maxLength={4} value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="No PIN set"/></label>
- {pin&&<label className="block text-[14px]">Confirm PIN<input className="field mt-2" type="password" inputMode="numeric" maxLength={4} value={confirm} onChange={e=>setConfirm(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Repeat the PIN"/></label>}
- {pin&&pin!==confirm&&<p className="text-[13px]" style={{color:'var(--redo)'}}>PINs don't match.</p>}
- <button className="btn btn-primary" disabled={busy||!changed||(pin.length>0&&pin!==confirm)||(pin.length>0&&pin.length!==4)} onClick={()=>onSave(pin||null)}>Save PIN</button></section>
+function StopPinEditor({configured,busy,onSave}:{configured:boolean;busy:boolean;onSave:(pin:string|null,onSuccess:()=>void)=>void}){
+ const[pin,setPin]=useState('')
+ const[confirmation,setConfirmation]=useState('')
+ return <section className="panel space-y-4 p-5"><h2 className="text-[20px] font-semibold">Stop PIN</h2><p className="text-[14px]" style={{color:'var(--ink-2)'}}>{configured?'A stop PIN is set. Enter a new PIN to replace it. The current PIN is never shown here.':'No stop PIN is set. Add one to require it before stopping the desktop app.'} This is a child-account prompt, not a protected Windows service.</p>
+ <label className="block text-[14px]">New 4-digit PIN<input className="field mt-2" type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="4 digits"/></label>
+ <label className="block text-[14px]">Confirm new PIN<input className="field mt-2" type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} value={confirmation} onChange={e=>setConfirmation(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Repeat the PIN"/></label>
+ {pin&&pin!==confirmation&&<p className="text-[13px]" style={{color:'var(--redo)'}}>PINs don&apos;t match.</p>}
+ <div className="flex flex-wrap gap-2"><button className="btn btn-primary" disabled={busy||pin.length!==4||confirmation!==pin} onClick={()=>onSave(pin,()=>{setPin('');setConfirmation('')})}>{configured?'Replace PIN':'Set PIN'}</button>{configured&&<button className="btn btn-quiet" disabled={busy} onClick={()=>{if(confirm('Remove the stop PIN from this child’s PC?'))onSave(null,()=>{setPin('');setConfirmation('')})}}>Remove PIN</button>}</div></section>
 }
 function BlockedAppsEditor({blocked,busy,onSave}:{blocked:string[];busy:boolean;onSave:(executables:string[])=>void}){
  const[list,setList]=useState(blocked.join('\n'))
@@ -98,7 +59,7 @@ function BlockedAppsEditor({blocked,busy,onSave}:{blocked:string[];busy:boolean;
  const parsed=list.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean)
  const invalid=parsed.filter(s=>!/^[\w.\-+ ]+\.exe$/i.test(s))
  const changed=JSON.stringify(parsed.slice().sort())!==JSON.stringify(blocked.slice().sort())
- return <section className="panel space-y-4 p-5"><h2 className="text-[20px] font-semibold">Blocked apps</h2><p className="text-[14px]" style={{color:'var(--ink-2)'}}>The desktop app immediately closes any foreground app in this list. Enter executable filenames (e.g. <code>discord.exe</code>). Protected system apps and browsers are ignored.</p>
+ return <section className="panel space-y-4 p-5"><h2 className="text-[20px] font-semibold">Blocked apps</h2><p className="text-[14px]" style={{color:'var(--ink-2)'}}>While the desktop app runs, it tries to close listed foreground apps. Enter executable filenames (e.g. <code>discord.exe</code>). Protected system apps and browsers are ignored.</p>
  {!editing&&blocked.length===0&&<p className="text-[14px]" style={{color:'var(--ink-3)'}}>No apps blocked.</p>}
  {!editing&&blocked.length>0&&<ul className="space-y-1">{blocked.map(b=><li key={b} className="text-[14px] font-mono">{b}</li>)}</ul>}
  {editing&&<><label className="block text-[14px]">One .exe per line (or comma-separated)<textarea className="field mt-2 font-mono text-[13px]" rows={4} value={list} onChange={e=>setList(e.target.value)} placeholder="discord.exe&#10;roblox.exe"/></label>

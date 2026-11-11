@@ -26,6 +26,7 @@ func (e *Engine) countdown(now time.Time) Countdown {
 		seconds := int(math.Ceil(e.demoCountdownUntil.Sub(now).Seconds()))
 		return Countdown{Visible: true, Seconds: seconds, Total: 10, Clock: fmt.Sprintf("00:%02d", seconds), Title: "PARENT DISPLAY TEST", Detail: "Demo only · no game time used or game closed", Game: "ChoreZap test overlay", Phase: "demo"}
 	}
+	if e.before.BackgroundGame { return Countdown{} }
 	family, familyAllowed, familyReason := e.familyState(now)
 	if e.expiredGame != "" {
 		remaining, limited := e.remaining(e.expiredGame)

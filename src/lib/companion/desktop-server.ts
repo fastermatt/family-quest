@@ -25,13 +25,14 @@ export async function desktopSnapshot(client:{id:string;family_id:string;child_i
   const admin=adminClient(),day=denverDay()
   const [rules,settings,batches,profile]=await Promise.all([
     admin.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',client.family_id).eq('child_id',client.child_id),
-    admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin,blocked_executables').eq('family_id',client.family_id).eq('child_id',client.child_id).maybeSingle(),
+    admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin_hash,blocked_executables').eq('family_id',client.family_id).eq('child_id',client.child_id).maybeSingle(),
     admin.from('companion_activity').select('client_id,apps').eq('family_id',client.family_id).eq('child_id',client.child_id).eq('day',day).limit(1500),
     admin.from('profiles').select('name').eq('id',client.child_id).eq('family_id',client.family_id).single(),
   ])
   if(rules.error||settings.error||batches.error||profile.error)throw new Error('Could not load companion settings.')
   const family = await familyOverview(admin,client.family_id,client.child_id)
-  const baseSettings = settings.data??{gaming_minutes:null,paused:false,mode:'warn',stop_pin:null,blocked_executables:[]}
+  const rawSettings = settings.data
+  const baseSettings = {gaming_minutes:rawSettings?.gaming_minutes??null,paused:rawSettings?.paused??false,mode:rawSettings?.mode??'warn',blocked_executables:rawSettings?.blocked_executables??[],stop_pin_required:!!rawSettings?.stop_pin_hash}
   const enabled = family.settings.enabled
   return {clientId:client.id,childName:profile.data.name,serverTime:new Date().toISOString(),day,
     rules:effectiveGameRules(aggregateApps(batches.data??[]),rules.data??[]),

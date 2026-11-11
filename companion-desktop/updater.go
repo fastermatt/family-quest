@@ -19,7 +19,7 @@ import (
 
 const updatePublicKey = "OhEnZ13gUc/92sAQ1BOLlb2z8OM2Lfj+MV6az7sMz8k="
 const releaseSequence = 6
-const bundledSequence = 13
+const bundledSequence = 15
 const maxUpdateSize = 32 << 20
 
 var errRemoteActivation = errors.New("verified update restart requested")
@@ -150,7 +150,7 @@ func stageRelease(n *Network, dir string, floor int) error {
 	if e = os.Rename(filepath.Join(dir, "pending.json.tmp"), filepath.Join(dir, "pending.json")); e != nil {
 		return e
 	}
-	updateStatus(dir, "Update "+r.Version+" ready · applying automatically")
+	updateStatus(dir, "Update "+r.Version+" verified and staged · waits for fresh policy and closed games")
 	return nil
 }
 func readRelease(dir, name string) (release, string, error) {
@@ -189,6 +189,33 @@ func removePendingIfMatches(dir string, selected release) {
 	if current, _, _, err := readPinnedRelease(dir, "pending.json"); err == nil && current == selected {
 		_ = os.Remove(filepath.Join(dir, "pending.json"))
 	}
+}
+
+// The launcher checks again after the worker exits. This narrows the window
+// in which a game could start between the worker's final check and activation.
+func launcherActivationSafe(dir string, now time.Time) bool {
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(dir), "ledger.json"))
+	if err != nil || len(b) > 8<<20 {
+		return false
+	}
+	var ledger Ledger
+	if json.Unmarshal(b, &ledger) != nil || ledger.Policy.ClientID == "" || ledger.Policy.Day != dayOf(now) || ledger.PolicyAcceptedAt.IsZero() || now.Before(ledger.PolicyAcceptedAt) || now.Sub(ledger.PolicyAcceptedAt) > 2*time.Minute {
+		return false
+	}
+	if f := ledger.Policy.FamilyPolicy; f != nil && f.Enabled {
+		expires, err := familyLease(ledger.Policy, ledger.PolicyAcceptedAt, ledger.PolicyRequestStartedAt)
+		if err != nil || !now.Before(expires) {
+			return false
+		}
+	}
+	games := map[string]bool{}
+	for _, rule := range ledger.Policy.Rules {
+		if rule.Category == "game" && !protected[rule.Executable] {
+			games[rule.Executable] = true
+		}
+	}
+	idle, err := classifiedGamesIdle(games)
+	return err == nil && idle
 }
 
 // The original portable executable is a stable launcher. Workers are verified
@@ -253,18 +280,12 @@ func supervise() error {
 	currentFloor.Store(int64(floor))
 	candidate := active
 	var pending release
-	var pendingManifest []byte
-	if r, p, pinned, err := readPinnedRelease(dir, "pending.json"); err == nil && r.Sequence > floor {
-		candidate = p
-		pending = r
-		pendingManifest = pinned
-	}
 	// Once the launcher has selected a worker, the worker must not inherit
 	// an already acknowledged restart request and exit during its health gate.
 	_ = os.Remove(filepath.Join(dir, "activation-acked"))
 	launch := func(path string) (*exec.Cmd, chan error, string, error) {
 		ready := filepath.Join(dir, "ready-"+secret(12))
-		cmd := exec.Command(path, "-worker", "-config", filepath.Join(filepath.Dir(exe), "server.json"), "-ready", ready, "-launcher-pid", fmt.Sprint(os.Getpid()))
+		cmd := exec.Command(path, "-worker", "-config", filepath.Join(filepath.Dir(exe), "server.json"), "-ready", ready, "-launcher-pid", fmt.Sprint(os.Getpid()), "-launcher-version", appVersion)
 		// GUI processes have no console handles; leave standard streams on null.
 		if err := cmd.Start(); err != nil {
 			return nil, nil, ready, err
@@ -274,34 +295,6 @@ func supervise() error {
 		return cmd, done, ready, nil
 	}
 	cmd, done, ready, e := launch(candidate)
-	if candidate != active {
-		healthy := false
-		if e == nil {
-			healthy = waitStartup(done, ready, 45*time.Second)
-		}
-		if healthy {
-			if err := writeActiveManifest(dir, pendingManifest); err != nil {
-				updateStatus(dir, "Update running; could not save selection")
-			} else {
-				floor = pending.Sequence
-				currentFloor.Store(int64(floor))
-				active = candidate
-				removePendingIfMatches(dir, pending)
-			}
-		} else {
-			if cmd != nil && cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			bad, _ := json.Marshal(pending)
-			_ = os.WriteFile(filepath.Join(dir, "failed.json"), bad, 0600)
-			removePendingIfMatches(dir, pending)
-			updateStatus(dir, "Update failed startup · restored previous version")
-			time.Sleep(time.Second)
-			_ = os.Remove(ready)
-			candidate = active
-			cmd, done, ready, e = launch(active)
-		}
-	}
 	if e != nil {
 		return e
 	}
@@ -327,8 +320,8 @@ func supervise() error {
 		if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 42 {
 			_ = os.Remove(ready)
 			r, p, activationManifest, readErr := readPinnedRelease(dir, "activation.json")
-			if readErr != nil || r.Sequence <= floor {
-				updateStatus(dir, "Remote update request could not be verified; continuing current version")
+			if readErr != nil || r.Sequence <= floor || !launcherActivationSafe(dir, time.Now()) {
+				updateStatus(dir, "Update deferred: verify signed release, fresh policy, and no running game")
 				cmd, done, ready, e = launch(candidate)
 				if e != nil {
 					return e
@@ -368,44 +361,6 @@ func supervise() error {
 			_ = os.Remove(filepath.Join(dir, "activation-acked"))
 			if e != nil {
 				return e
-			}
-			started = time.Now()
-			attempts = 0
-			continue
-		}
-		// Auto-apply any staged update when the worker exits for any reason.
-		if r, p, pinnedManifest, readErr := readPinnedRelease(dir, "pending.json"); readErr == nil && r.Sequence > floor {
-			_ = os.Remove(ready)
-			old := candidate
-			candidate = p
-			_ = os.Remove(filepath.Join(dir, "activation-acked"))
-			cmd, done, ready, e = launch(candidate)
-			healthy := e == nil && waitStartup(done, ready, 45*time.Second)
-			if healthy {
-				if writeErr := writeActiveManifest(dir, pinnedManifest); writeErr != nil {
-					updateStatus(dir, "Update running; could not save selection")
-				} else {
-					floor = r.Sequence
-					currentFloor.Store(int64(floor))
-					active = candidate
-					removePendingIfMatches(dir, r)
-					updateStatus(dir, "Updated to "+r.Version)
-				}
-			} else {
-				if cmd != nil && cmd.Process != nil {
-					_ = cmd.Process.Kill()
-				}
-				bad, _ := json.Marshal(r)
-				_ = os.WriteFile(filepath.Join(dir, "failed.json"), bad, 0600)
-				removePendingIfMatches(dir, r)
-				updateStatus(dir, "Update "+r.Version+" failed startup · restored previous version")
-				time.Sleep(time.Second)
-				_ = os.Remove(ready)
-				candidate = old
-				cmd, done, ready, e = launch(old)
-				if e != nil {
-					return e
-				}
 			}
 			started = time.Now()
 			attempts = 0

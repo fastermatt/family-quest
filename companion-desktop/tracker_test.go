@@ -107,6 +107,33 @@ func TestDamagedStateDoesNotSilentlyResetAllowance(t *testing.T) {
 	if _, err := newEngine(dir, Account{}, true); err == nil {
 		t.Fatal("damaged state silently reset")
 	}
+	if raw, err := os.ReadFile(filepath.Join(dir, "ledger.json")); err != nil || string(raw) != "bad" {
+		t.Fatal("damaged ledger was changed", err)
+	}
+}
+
+func TestSwitchingBetweenRunningGamesChargesSharedTimeOnce(t *testing.T) {
+	e := testEngine(t)
+	e.Ledger.Policy.Rules = []Rule{{Executable: "a.exe", Category: "game"}, {Executable: "b.exe", Category: "game"}}
+	start := e.Ledger.Last
+	e.sample(start.Add(2*time.Second), Observation{Executable: "a.exe", Available: true})
+	e.sample(start.Add(4*time.Second), Observation{Executable: "b.exe", Available: true})
+	e.sample(start.Add(6*time.Second), Observation{Executable: "a.exe", Available: true})
+	if e.Ledger.Totals["a.exe"]+e.Ledger.Totals["b.exe"] != 4 || e.Ledger.Gaps != 2 {
+		t.Fatal(e.Ledger.Totals, e.Ledger.Gaps)
+	}
+}
+func TestLockedSessionNeverUsesRunningGameFallback(t *testing.T) {
+	games := map[string]bool{"game.exe": true}
+	if fallbackEligible(Observation{}, games) {
+		t.Fatal("unavailable desktop used fallback")
+	}
+	if fallbackEligible(Observation{Executable: "game.exe", Available: true}, games) {
+		t.Fatal("foreground game replaced")
+	}
+	if !fallbackEligible(Observation{Executable: "msedge.exe", Available: true}, games) {
+		t.Fatal("running game not accounted during browser use")
+	}
 }
 func TestEveryBatchBalances(t *testing.T) {
 	e := testEngine(t)

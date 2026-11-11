@@ -30,6 +30,7 @@ func run() error {
 	configPath := flag.String("config", "", "bootstrap configuration path")
 	readyPath := flag.String("ready", "", "internal startup marker")
 	launcherPID := flag.Int("launcher-pid", 0, "internal launcher capability marker")
+	launcherVersion := flag.String("launcher-version", "", "internal launcher version")
 	flag.Parse()
 	if runtime.GOOS == "windows" && !*demo && !*worker {
 		if *uninstall {
@@ -92,7 +93,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	e.network = network
 	e.launcherPID = *launcherPID
+	e.launcherVersion = *launcherVersion
 	if *demo {
 		seedDemo(e)
 	}
@@ -153,6 +156,7 @@ func run() error {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stop)
 	started := time.Now()
+	autoCheckAt := time.Time{}
 	for {
 		select {
 		case <-ticker.C:
@@ -165,7 +169,7 @@ func run() error {
 				if activate && policyFresh {
 					idle, idleErr = classifiedGamesIdle(games)
 				}
-				if activate && policyFresh && e.launcherPID != 0 && idleErr == nil && idle {
+				if activate && policyFresh && e.remoteActivationAvailable() && idleErr == nil && idle {
 					if err = e.save(); err == nil {
 						return errRemoteActivation
 					}
@@ -175,9 +179,9 @@ func run() error {
 				// If the foreground window belongs to a background process (common
 				// for exclusive full-screen DirectX games), override with any
 				// classified game currently running in this user's session.
-				if o.Available && !games[o.Executable] && len(games) > 0 {
+				if fallbackEligible(o, games) {
 					if name, pid := runningClassifiedGame(games); name != "" {
-						o = Observation{Executable: name, IdleSeconds: o.IdleSeconds, Available: true, PID: pid}
+						o = Observation{Executable: name, IdleSeconds: o.IdleSeconds, Available: true, PID: pid, BackgroundGame: true}
 					}
 				}
 				o.Hint = detector.lookup(o.Path)
@@ -190,15 +194,17 @@ func run() error {
 						*readyPath = ""
 					}
 				}
-				// Exit cleanly when a new update is staged during this run so the
-				// supervisor can apply it immediately without waiting for a manual restart.
-				if *worker && *readyPath == "" {
-					updateDir := filepath.Join(dir, "updates")
-					if info, statErr := os.Stat(filepath.Join(updateDir, "pending.json")); statErr == nil && info.ModTime().After(started) {
-						e.mu.Lock()
-						e.Action = "Update ready · applying…"
-						e.mu.Unlock()
-						cancel()
+				// Automatic staging uses the same fresh-policy and all-game idle
+				// gate as an explicit parent request. Ordinary Stop exits never apply.
+				if *worker && *readyPath == "" && time.Since(autoCheckAt) >= 15*time.Second {
+					autoCheckAt = time.Now()
+					if _, statErr := os.Stat(filepath.Join(dir, "updates", "pending.json")); statErr == nil {
+						if outcome, status := e.prepareApplyUpdate(); outcome == "restart_requested" {
+							e.mu.Lock()
+							e.activationRequested = true
+							e.Action = status
+							e.mu.Unlock()
+						}
 					}
 				}
 			}
@@ -215,6 +221,9 @@ func run() error {
 			return e.save()
 		}
 	}
+}
+func fallbackEligible(o Observation, games map[string]bool) bool {
+	return o.Available && !o.BackgroundGame && !games[o.Executable] && len(games) > 0
 }
 func seedDemo(e *Engine) {
 	cap := 120

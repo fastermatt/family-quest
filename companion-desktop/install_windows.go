@@ -47,12 +47,8 @@ func maybeInstall(currentExe string) (bool, error) {
 	local := os.Getenv("LOCALAPPDATA")
 	pidFile := filepath.Join(local, "ChoreZapDesktop", "supervisor.pid")
 
-	// Kill any running instance so its exe file is not locked.
-	// Try PID file first, then fall back to killing by name (handles the case
-	// where the running binary predates the PID file feature).
+	// Replace only the verified same-account installed supervisor.
 	replaceRunningInstance(pidFile)
-	exec.Command("taskkill", "/F", "/IM", "ChoreZap.exe",
-		"/FI", fmt.Sprintf("PID ne %d", os.Getpid())).Run()
 	time.Sleep(3 * time.Second)
 
 	if err = os.MkdirAll(installDir, 0755); err != nil {
@@ -156,6 +152,14 @@ func runUninstall() error {
 	if err != nil {
 		return err
 	}
+	installed, err := installedExePath()
+	if err != nil {
+		return err
+	}
+	installDir, err := canonicalUninstallDir(exe, installed)
+	if err != nil {
+		return err
+	}
 	local := os.Getenv("LOCALAPPDATA")
 	if local == "" {
 		return fmt.Errorf("LOCALAPPDATA not set")
@@ -188,13 +192,24 @@ func runUninstall() error {
 		uintptr(syscall.HKEY_CURRENT_USER), uintptr(unsafe.Pointer(unKey)),
 	)
 
-	showError("ChoreZap has been removed from this Windows account.")
-
-	// Delete the installation folder after this process exits.
-	installDir := filepath.Dir(exe)
-	_ = exec.Command("cmd", "/C",
-		fmt.Sprintf("ping -n 3 127.0.0.1 > nul && rmdir /S /Q %q", installDir),
-	).Start()
+	// Remove only ChoreZap-owned files. The app's cache/ledger remains for
+	// recovery, and unrelated files in the install folder are untouched.
+	for _, path := range ownedInstallFiles(installed)[:2] {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("could not remove ChoreZap file: %w", err)
+		}
+	}
+	if err := os.Remove(installed); err != nil && !os.IsNotExist(err) {
+		// Windows can lock the currently executing EXE. Queue only this exact
+		// file for deletion on reboot; never invoke cmd/rmdir on a directory.
+		name, _ := syscall.UTF16PtrFromString(installed)
+		ok, _, callErr := observationKernel32.NewProc("MoveFileExW").Call(uintptr(unsafe.Pointer(name)), 0, 4)
+		if ok == 0 {
+			return fmt.Errorf("startup disabled, but installed EXE could not be removed; close ChoreZap and remove it manually: %v", callErr)
+		}
+	}
+	_ = os.Remove(installDir) // Succeeds only when empty.
+	showError("ChoreZap startup was disabled and its app files were removed or queued for deletion at restart. Saved usage was kept.")
 
 	return nil
 }

@@ -3,8 +3,9 @@ ChoreZap — Windows PC Companion
 
 WHAT THIS IS
 ------------
-ChoreZap tracks game and app time on this Windows account and enforces
-the daily limits a parent sets at app-family-controls.vercel.app.
+ChoreZap tracks game and app time on this Windows account. A parent can
+choose reminder mode or game closing after a save warning. The daily
+allowance and schedules come from app-family-controls.vercel.app.
 
 
 INSTALL (takes about 1 minute)
@@ -19,7 +20,7 @@ INSTALL (takes about 1 minute)
    ChoreZap installs itself automatically to:
        %LOCALAPPDATA%\Programs\ChoreZap\
 
-   A browser tab opens showing a 4-digit setup code.
+   A ChoreZap dashboard window opens showing a 4-digit setup code.
 
 4. On your phone or another computer, go to:
 
@@ -51,4 +52,10 @@ TROUBLESHOOTING
 Dashboard shows no data   — Wait 30 seconds after opening a game.
                             ChoreZap samples activity every few seconds.
 
-Killed from Task Manager  — Windows will restart ChoreZap within 60 seconds.
+Damaged saved usage        — Preserve %LOCALAPPDATA%\ChoreZapDesktop\ledger.json.
+                            Do not delete it or reset the allowance. A parent
+                            can review uploaded usage and restore a verified
+                            backup; unuploaded activity may be unrecoverable.
+
+Killed from Task Manager  — Reopen ChoreZap if it does not restart. Recovery
+                            timing depends on Windows Task Scheduler settings.

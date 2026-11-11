@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -40,7 +41,7 @@ func (e *Engine) view() any {
 	if e.Ledger.Policy.ClientID != "" {
 		pin = ""
 	}
-	return map[string]any{"syncConflicts": e.Ledger.SyncConflicts, "updateStatus": string(update), "countdown": e.countdown(time.Now()), "version": appVersion, "demo": e.demo, "childName": e.Ledger.Policy.ChildName, "linked": e.Ledger.Policy.ClientID != "", "claim": strings.Join(parts, "-"), "pin": pin, "day": e.Ledger.Day, "apps": apps, "groups": groups, "gaps": e.Ledger.Gaps, "current": e.Current, "lastUpload": e.LastSync, "lastPolicy": e.LastPolicy, "pending": len(e.Ledger.Outbox), "syncError": e.SyncError, "action": e.Action, "settings": e.Ledger.Policy.Settings, "familyEnabled": familyEnabled, "familyAllowed": familyAllowed, "familyReason": familyReason}
+	return map[string]any{"syncConflicts": e.Ledger.SyncConflicts, "updateStatus": string(update), "countdown": e.countdown(time.Now()), "version": appVersion, "demo": e.demo, "childName": e.Ledger.Policy.ChildName, "linked": e.Ledger.Policy.ClientID != "", "claim": strings.Join(parts, "-"), "pin": pin, "day": e.Ledger.Day, "apps": apps, "groups": groups, "gaps": e.Ledger.Gaps, "current": e.Current, "backgroundGame": e.before.BackgroundGame, "lastUpload": e.LastSync, "lastPolicy": e.LastPolicy, "pending": len(e.Ledger.Outbox), "syncError": e.SyncError, "action": e.Action, "settings": e.Ledger.Policy.Settings, "familyEnabled": familyEnabled, "familyAllowed": familyAllowed, "familyReason": familyReason, "launcherVersion": e.reportedLauncherVersion(), "remoteActivationAvailable": e.remoteActivationAvailable()}
 }
 func (e *Engine) serve(cancel context.CancelFunc) (string, func(), error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -86,18 +87,46 @@ func (e *Engine) serve(cancel context.CancelFunc) (string, func(), error) {
 				http.Error(w, "Invalid request", 403)
 				return
 			}
-			e.mu.Lock()
-			pin := e.Ledger.Policy.Settings.StopPin
-			e.mu.Unlock()
-			if pin != "" {
-				var body struct {
-					Pin string `json:"pin"`
+			var body struct {
+				Pin string `json:"pin"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil && err != io.EOF {
+				http.Error(w, "Invalid request", 400)
+				return
+			}
+			if len(body.Pin) != 0 && len(body.Pin) != 4 {
+				http.Error(w, "Invalid PIN", 400)
+				return
+			}
+			for _, digit := range body.Pin {
+				if digit < '0' || digit > '9' {
+					http.Error(w, "Invalid PIN", 400)
+					return
 				}
-				_ = json.NewDecoder(r.Body).Decode(&body)
-				if subtle.ConstantTimeCompare([]byte(body.Pin), []byte(pin)) != 1 {
+			}
+			e.mu.Lock()
+			linked := e.Ledger.Policy.ClientID != "" && !e.demo
+			e.mu.Unlock()
+			if linked {
+				if e.network == nil {
+					http.Error(w, "Stop authorization unavailable", 503)
+					return
+				}
+				status, err := e.network.request("/api/companion/v2/stop", e.account.Token, map[string]string{"pin": body.Pin}, nil)
+				if err != nil {
 					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(403)
-					_, _ = w.Write([]byte(`{"error":"wrong_pin"}`))
+					if status == 403 {
+						w.WriteHeader(403)
+						_, _ = w.Write([]byte(`{"error":"wrong_pin"}`))
+						return
+					}
+					if status == 429 {
+						w.WriteHeader(429)
+						_, _ = w.Write([]byte(`{"error":"throttled"}`))
+						return
+					}
+					w.WriteHeader(503)
+					_, _ = w.Write([]byte(`{"error":"stop_unavailable"}`))
 					return
 				}
 			}

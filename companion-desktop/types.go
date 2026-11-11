@@ -10,15 +10,16 @@ import (
 	"time"
 )
 
-const appVersion = "0.3.5"
+const appVersion = "0.3.6"
 
 type Observation struct {
-	Executable  string
-	IdleSeconds int64
-	Available   bool
-	Path        string // Local only: never serialized or uploaded.
-	Hint        *AppHint
-	PID         uint32
+	Executable     string
+	IdleSeconds    int64
+	Available      bool
+	Path           string // Local only: never serialized or uploaded.
+	Hint           *AppHint
+	PID            uint32
+	BackgroundGame bool // Running in this session, but not the foreground window.
 }
 type AppTime struct {
 	Executable string   `json:"executable"`
@@ -36,7 +37,7 @@ type Settings struct {
 	GamingSeconds      *float64 `json:"-"`
 	Paused             bool     `json:"paused"`
 	Mode               string   `json:"mode"`
-	StopPin            string   `json:"stop_pin"`
+	StopPinRequired    bool     `json:"stop_pin_required"`
 	BlockedExecutables []string `json:"blocked_executables"`
 }
 
@@ -45,14 +46,15 @@ func (s *Settings) UnmarshalJSON(data []byte) error {
 		GamingMinutes      *float64 `json:"gaming_minutes"`
 		Paused             bool     `json:"paused"`
 		Mode               string   `json:"mode"`
-		StopPin            string   `json:"stop_pin"`
+		StopPinRequired    bool     `json:"stop_pin_required"`
+		LegacyStopPin      string   `json:"stop_pin"`
 		BlockedExecutables []string `json:"blocked_executables"`
 	}
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
 	}
 	s.Paused, s.Mode = wire.Paused, wire.Mode
-	s.StopPin = wire.StopPin
+	s.StopPinRequired = wire.StopPinRequired || wire.LegacyStopPin != ""
 	s.BlockedExecutables = wire.BlockedExecutables
 	s.GamingMinutes, s.GamingSeconds = nil, nil
 	if wire.GamingMinutes != nil {
@@ -74,21 +76,11 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 		GamingMinutes      any      `json:"gaming_minutes"`
 		Paused             bool     `json:"paused"`
 		Mode               string   `json:"mode"`
-		StopPin            string   `json:"stop_pin,omitempty"`
+		StopPinRequired    bool     `json:"stop_pin_required"`
 		BlockedExecutables []string `json:"blocked_executables,omitempty"`
-	}{minutes, s.Paused, s.Mode, s.StopPin, s.BlockedExecutables})
+	}{minutes, s.Paused, s.Mode, s.StopPinRequired, s.BlockedExecutables})
 }
 
-type BrowseEntry struct {
-	Domain   string  `json:"domain"`
-	Category string  `json:"category"`
-	Title    string  `json:"title,omitempty"`
-	Seconds  float64 `json:"seconds"`
-}
-type BrowseBatch struct {
-	Day     string        `json:"day"`
-	Entries []BrowseEntry `json:"entries"`
-}
 type FamilyPolicy struct {
 	Enabled   bool   `json:"enabled"`
 	Revision  int64  `json:"revision"`

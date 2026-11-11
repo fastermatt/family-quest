@@ -20,8 +20,8 @@ type processEntry struct {
 
 // runningClassifiedGame returns the exe name and PID of a classified game
 // running in the current user's session, or ("", 0) if none is found.
-// Used to override foreground detection for exclusive full-screen DirectX
-// games, which cause GetForegroundWindow to return a background process.
+// Used for a single shared game-time track when a classified game remains
+// running behind another window, including exclusive full-screen cases.
 func runningClassifiedGame(games map[string]bool) (string, uint32) {
 	if len(games) == 0 {
 		return "", 0
@@ -34,6 +34,11 @@ func runningClassifiedGame(games map[string]bool) (string, uint32) {
 	if err != nil {
 		return "", 0
 	}
+	currentPID, _, _ := observationCurrentPID.Call()
+	var currentSession uint32
+	if ok, _, _ := observationProcessSession.Call(currentPID, uintptr(unsafe.Pointer(&currentSession))); ok == 0 {
+		return "", 0
+	}
 	h, _, _ := observationKernel32.NewProc("CreateToolhelp32Snapshot").Call(2, 0)
 	if h == ^uintptr(0) {
 		return "", 0
@@ -44,22 +49,31 @@ func runningClassifiedGame(games map[string]bool) (string, uint32) {
 	if first == 0 {
 		return "", 0
 	}
+	selectedName, selectedPID := "", uint32(0)
 	for {
 		name := strings.ToLower(syscall.UTF16ToString(entry.Exe[:]))
 		if games[name] {
+			var session uint32
+			inSession, _, _ := observationProcessSession.Call(uintptr(entry.PID), uintptr(unsafe.Pointer(&session)))
+			if inSession == 0 || session != currentSession {
+				goto nextProcess
+			}
 			process, openErr := syscall.OpenProcess(0x1000, false, entry.PID)
 			if openErr == nil {
 				owner, ownerErr := processSID(process)
 				syscall.CloseHandle(process)
 				if ownerErr == nil && owner == sid {
-					return name, entry.PID
+					if selectedName == "" || name < selectedName || (name == selectedName && entry.PID < selectedPID) {
+						selectedName, selectedPID = name, entry.PID
+					}
 				}
 			}
 		}
+	nextProcess:
 		next, _, nextErr := observationKernel32.NewProc("Process32NextW").Call(h, uintptr(unsafe.Pointer(&entry)))
 		if next == 0 {
 			if nextErr == syscall.Errno(18) {
-				return "", 0
+				return selectedName, selectedPID
 			}
 			return "", 0
 		}

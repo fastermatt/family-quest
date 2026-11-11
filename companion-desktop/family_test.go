@@ -120,6 +120,29 @@ func TestFamilyLocalExhaustionReason(t *testing.T) {
 	}
 }
 
+func TestBackgroundGameDoesNotCloseSchoolOrConsumeSaveWindow(t *testing.T) {
+	e, now := familyEngine(t, false)
+	e.Ledger.Policy.Rules = append(e.Ledger.Policy.Rules, Rule{Executable: "school.exe", Category: "school"})
+	e.Ledger.Policy.Settings.BlockedExecutables = []string{"school.exe"}
+	background := Observation{Executable: "game.exe", Available: true, PID: 42, BackgroundGame: true}
+	e.enforce(background, now)
+	if !e.Ledger.FamilyCloseDeadline.IsZero() {
+		t.Fatal("background game consumed warning")
+	}
+	e.before = background
+	if c := e.countdown(now); c.Visible {
+		t.Fatal("overlay interrupted school", c)
+	}
+	e.enforce(Observation{Executable: "school.exe", Available: true, PID: 43}, now)
+	if !e.Ledger.FamilyCloseDeadline.IsZero() {
+		t.Fatal("school app was limited")
+	}
+	e.enforce(Observation{Executable: "game.exe", Available: true, PID: 42}, now.Add(time.Second))
+	if e.Ledger.FamilyCloseDeadline.IsZero() {
+		t.Fatal("foreground game lacked warning")
+	}
+}
+
 func TestFractionalEarnedMinutesRoundTrip(t *testing.T) {
 	var settings Settings
 	if err := json.Unmarshal([]byte(`{"gaming_minutes":1.5,"paused":false,"mode":"close"}`), &settings); err != nil {

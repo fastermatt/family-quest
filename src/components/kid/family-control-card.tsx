@@ -19,6 +19,7 @@ export function FamilyControlCard() {
           {o.settings.enabled ? <GameTimeCard overview={o} /> : <div className="panel p-5"><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>Your family has not turned on earned game minutes yet.</p></div>}
           {o.money.initialized && <div className="panel mt-4 p-5"><h3 className="font-semibold">Optional paid work</h3><p className="mt-1 text-[14px]">{money(o.money.debtRemainingCents)} of the family IOU remaining · {money(o.money.cashOwedCents)} cash owed</p><p className="mt-1 text-[12px]" style={{ color: 'var(--ink-2)' }}>Paid jobs first lower the IOU. Your parent records cash after paying you.</p></div>}
           {!!o.jobs.length && <div className="panel mt-4 space-y-3 p-5"><h3 className="mb-1 font-semibold">Jobs from your parent</h3>{o.jobs.map(j => <KidJob key={j.id} job={j} busy={save.isPending} onAction={body => { setNotice(''); save.mutate(body) }} />)}</div>}
+          <p className="mt-4 text-[12px]" style={{ color: 'var(--ink-2)' }}>A linked PC can share supported Edge and Chrome page visits and YouTube links with your parent. These are history records, not proof a video was watched.</p>
           {notice && <p role={save.isError ? 'alert' : 'status'} className="mt-3 text-[13px]">{notice}</p>}
         </>}
     </section>
@@ -39,7 +40,7 @@ function GameTimeCard({ overview: o }: { overview: FamilyOverview }) {
   const isAlmostUp = g.allowed && g.remainingSeconds > 0 && g.remainingSeconds < 300
   const statusColor = isBlocked ? 'var(--miss)' : isAlmostUp ? '#f59e0b' : 'var(--go)'
   const statusBg = isBlocked ? 'rgba(239,68,68,0.08)' : isAlmostUp ? 'rgba(245,158,11,0.08)' : 'rgba(34,197,94,0.08)'
-  const statusText = isBlocked ? (g.remainingSeconds === 0 ? 'Time up' : 'Blocked') : g.paused ? 'Paused' : isAlmostUp ? 'Almost up' : 'Good to go'
+  const statusText = g.paused ? 'Paused' : isBlocked ? (g.grantedSeconds > 0 && g.remainingSeconds === 0 ? 'Time used' : 'Not ready') : isAlmostUp ? 'Almost up' : 'Good to go'
 
   return (
     <div className="panel overflow-hidden p-0">
@@ -51,9 +52,10 @@ function GameTimeCard({ overview: o }: { overview: FamilyOverview }) {
 
       {/* Big time display */}
       <div className="px-5 pb-2 pt-5">
-        <p className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-3)' }}>Time remaining</p>
+        <p className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-3)' }}>Time left at last PC report</p>
         <p className="mt-1 text-[52px] font-black leading-none tabular-nums" style={{ color: statusColor }}>{duration(g.remainingSeconds)}</p>
         <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-2)' }}>of {duration(g.grantedSeconds)} earned today{g.extraGrantSeconds > 0 ? ` (includes ${duration(g.extraGrantSeconds)} bonus)` : ''}</p>
+        <p className="mt-2 text-[12px]" style={{ color: 'var(--ink-3)' }}>Family plan: {o.settings.weekday_minutes} min weekdays · {o.settings.weekend_minutes} min weekends · {o.settings.bathroom_bonus_minutes} min bathroom bonus once per weekend after parent confirmation.</p>
       </div>
 
       {/* Blocking incident warning */}
@@ -86,7 +88,7 @@ function GameTimeCard({ overview: o }: { overview: FamilyOverview }) {
         {g.bathroomGranted && (
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-3)' }}>Bathroom bonus</p>
-            <p className="mt-0.5 text-[14px] font-semibold" style={{ color: 'var(--go)' }}>Awarded ✓</p>
+            <p className="mt-0.5 text-[14px] font-semibold" style={{ color: 'var(--go)' }}>Awarded this weekend ✓</p>
           </div>
         )}
         <div className="ml-auto self-end">

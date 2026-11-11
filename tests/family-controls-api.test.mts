@@ -16,18 +16,18 @@ function load(path:string,mocks:Record<string,unknown>):Record<string,Handler> {
  vm.runInNewContext(code,{module:unit,exports:unit.exports,require:(name:string)=>{if(name in mocks)return mocks[name];if(name.startsWith('@/'))return load('src/'+name.slice(2)+'.ts',mocks);if(name.startsWith('.'))return load(pathModule.join(pathModule.dirname(path),name)+(name.endsWith('.ts')?'':'.ts'),mocks);return require(name)},Response,Request,Headers,URL,Buffer,console},{filename:path})
  return unit.exports
 }
-function fixture(role:'parent'|'child'|'none'='parent',sameFamily=true,rpcError:unknown=null) {
+function fixture(role:'parent'|'child'|'none'='parent',sameFamily=true,rpcError:unknown=null,rpcData:unknown=null) {
  const calls:{name:string;args:Record<string,unknown>}[]=[]
- const admin={rpc:async(name:string,args:Record<string,unknown>)=>{calls.push({name,args});return {error:rpcError}}}
+ const admin={rpc:async(name:string,args:Record<string,unknown>)=>{calls.push({name,args});return {error:rpcError,data:rpcData}}}
  const me=role==='none'?null:{id:role==='child'?C:P,family_id:F,role}
  const error=(status:number)=>Response.json({error:'denied'},{status})
  const mocks={
   '@/lib/api-auth':{requireParent:async()=>!me?{error:error(401)}:role!=='parent'?{error:error(403)}:{me,admin},childInFamily:async()=>sameFamily},
   '@/lib/session':{getSessionProfile:async()=>me,adminClient:()=>admin},
-  '@/lib/companion/desktop-server':{sameOrigin:(req:{origin:string})=>req.origin==='https://family.example',limitedJson:async(req:{body:unknown})=>req.body,desktopIdentity:async(req:{linked?:boolean})=>req.linked===false?null:{id:'90000000-0000-4000-8000-000000000001'}},
+  '@/lib/companion/desktop-server':{desktopError:(message:string,status=400)=>Response.json({error:message},{status}),sameOrigin:(req:{origin:string})=>req.origin==='https://family.example',limitedJson:async(req:{body:unknown})=>req.body,desktopIdentity:async(req:{linked?:boolean})=>req.linked===false?null:{id:'90000000-0000-4000-8000-000000000001'}},
   '@/lib/family-controls/server':{},
  }
- return {calls,parent:load('src/app/api/parent/family-controls/route.ts',mocks),child:load('src/app/api/child/family-controls/route.ts',mocks),maintenance:load('src/app/api/parent/companion/commands/route.ts',mocks),device:load('src/app/api/companion/v2/commands/route.ts',mocks)}
+ return {calls,stop:load('src/app/api/companion/v2/stop/route.ts',mocks),parent:load('src/app/api/parent/family-controls/route.ts',mocks),child:load('src/app/api/child/family-controls/route.ts',mocks),maintenance:load('src/app/api/parent/companion/commands/route.ts',mocks),device:load('src/app/api/companion/v2/commands/route.ts',mocks)}
 }
 const request=(body:unknown,origin='https://family.example')=>({body,origin})
 test('parent mutations reject signed-out, child, cross-family and cross-origin requests before RPC',async()=>{
@@ -96,4 +96,20 @@ test('parent queues maintenance commands with correct scope and all four kinds a
  const badId=fixture()
  assert.equal((await badId.maintenance.POST(request({clientId:'not-a-uuid',requestId,kind:'diagnostics'}))).status,400)
  assert.equal(badId.calls.length,0)
+})
+
+
+test('device stop derives identity, rejects offline/unlinked/invalid and requires server authorization',async()=>{
+ const linked=fixture('parent',true,null,'allowed')
+ assert.equal((await linked.stop.POST({...request({pin:''}),linked:false})).status,401)
+ assert.equal((await linked.stop.POST(request({pin:'12345'}))).status,400)
+ assert.equal(linked.calls.length,0)
+ assert.equal((await linked.stop.POST(request({pin:'1234',clientId:'forged'}))).status,200)
+ assert.equal(linked.calls[0].args.p_client,'90000000-0000-4000-8000-000000000001')
+ assert.equal(linked.calls[0].name,'companion_verify_stop')
+ for(const [value,status] of [['wrong_pin',403],['throttled',429],['unknown',503]] as const){
+  assert.equal((await fixture('parent',true,null,value).stop.POST(request({pin:'1234'}))).status,status)
+ }
+ const failed=await fixture('parent',true,{message:'internal secret'},null).stop.POST(request({pin:'1234'}))
+ assert.equal(failed.status,503);assert.equal((await failed.text()).includes('internal secret'),false)
 })

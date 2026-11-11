@@ -273,11 +273,7 @@ func (e *Engine) browseOnce(n *Network) {
 	if !linked {
 		return
 	}
-	entries := collectBrowseHistory()
-	if len(entries) == 0 {
-		return
-	}
-	batch := BrowseBatch{Day: dayOf(time.Now()), Entries: entries}
+	batch := collectBrowseHistory()
 	_, _ = n.request("/api/companion/v2/browse", token, batch, nil)
 }
 

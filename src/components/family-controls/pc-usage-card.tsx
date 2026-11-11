@@ -3,10 +3,12 @@
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Monitor, Wifi, WifiOff } from 'lucide-react'
+import { summarizePCUsage } from '@/lib/companion/pc-usage'
 
-interface App { executable: string; label: string; category: string; seconds: number }
+interface App { executable: string; seconds: number }
 interface CompanionState {
   apps: App[]
+  rules: { executable: string; label: string; category: string }[]
   settings: { gaming_minutes: number | null; paused: boolean; mode: string }
   clients: { id: string; name: string; last_seen_at: string }[]
   lastUpload: string | null
@@ -21,16 +23,16 @@ function fmt(sec: number) {
   return `${sec}s`
 }
 
-function sinceLabel(iso: string | null) {
+function sinceLabel(iso: string | null, now: number) {
   if (!iso) return 'Never synced'
-  const ms = Date.now() - new Date(iso).getTime()
-  if (ms < 5 * 60_000) return 'Online'
+  const ms = now - new Date(iso).getTime()
+  if (ms < 5 * 60_000) return 'Recent upload'
   if (ms < 60 * 60_000) return `${Math.floor(ms / 60_000)}m ago`
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' })
 }
 
 export function PCUsageCard() {
-  const { data, isLoading } = useQuery<CompanionState>({
+  const { data, dataUpdatedAt, isLoading } = useQuery<CompanionState>({
     queryKey: ['parent-companion'],
     queryFn: async () => {
       const r = await fetch('/api/parent/companion')
@@ -43,12 +45,11 @@ export function PCUsageCard() {
   if (isLoading) return <div className="skeleton h-24 rounded-2xl" />
   if (!data?.clients?.length) return null
 
-  const gamingSec = (data.apps ?? []).filter(a => a.category === 'game').reduce((s, a) => s + a.seconds, 0)
+  const { gamingSeconds: gamingSec, topGame } = summarizePCUsage(data.apps ?? [], data.rules ?? [])
   const limitMin = data.settings.gaming_minutes
   const limitSec = limitMin !== null ? limitMin * 60 : null
   const pct = limitSec ? Math.min(100, (gamingSec / limitSec) * 100) : null
-  const online = data.lastUpload ? Date.now() - new Date(data.lastUpload).getTime() < 5 * 60_000 : false
-  const topGame = (data.apps ?? []).filter(a => a.category === 'game').sort((a, b) => b.seconds - a.seconds)[0]
+  const recentUpload = data.lastUpload ? dataUpdatedAt - new Date(data.lastUpload).getTime() < 5 * 60_000 : false
   const childName = data.children?.find(c => c.id === data.childId)?.name ?? 'Grey'
 
   const barColor =
@@ -63,13 +64,13 @@ export function PCUsageCard() {
         <div className="flex items-center gap-2 flex-wrap">
           <Monitor size={16} className="shrink-0" style={{ color: 'var(--ink-3)' }} aria-hidden />
           <span className="text-[15px] font-semibold">{childName}&apos;s PC</span>
-          <span className="flex items-center gap-1 text-[13px]" style={{ color: online ? 'var(--ok)' : 'var(--ink-3)' }}>
-            {online ? <Wifi size={12} aria-hidden /> : <WifiOff size={12} aria-hidden />}
-            {sinceLabel(data.lastUpload)}
+          <span className="flex items-center gap-1 text-[13px]" style={{ color: recentUpload ? 'var(--ok)' : 'var(--ink-3)' }}>
+            {recentUpload ? <Wifi size={12} aria-hidden /> : <WifiOff size={12} aria-hidden />}
+            {sinceLabel(data.lastUpload, dataUpdatedAt)}
           </span>
         </div>
-        <Link href="/family-controls" className="shrink-0 text-[13px]" style={{ color: 'var(--accent)' }}>
-          Settings
+        <Link href="/pc" className="shrink-0 text-[13px]" style={{ color: 'var(--accent)' }}>
+          PC details
         </Link>
       </div>
 

@@ -12,10 +12,17 @@ async function setup() {
  await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
  create table families(id uuid primary key,family_xp integer default 0,family_level integer default 1);
  create table profiles(id uuid primary key,family_id uuid references families,role text,xp_total integer default 0);
+ create view public_profiles as select * from profiles; grant select on public_profiles to public;
+ create function cleanup_old_pin_attempts() returns void language plpgsql security definer as $$ begin return; end $$;
  create table privileges(id uuid primary key,family_id uuid references families);
  create table task_templates(id uuid primary key,family_id uuid references families,proof_type text,photo_required boolean default false,required boolean default true,active boolean default true,xp_value integer default 100);
  create table task_instances(id uuid primary key,template_id uuid references task_templates,assigned_to uuid references profiles,due_date date,status text,xp_awarded integer default 0,reviewed_at timestamptz,review_note text);
  create table companion_clients(id uuid primary key,family_id uuid references families,child_id uuid references profiles,revoked_at timestamptz);
+ create table companion_limits(family_id uuid,child_id uuid,gaming_minutes int,paused bool default false,mode text default 'warn',primary key(family_id,child_id));
+ -- pgcrypto compatibility shim for the embedded DB only. Real crypt verified in hosted rollback test.
+ create schema extensions;
+ create function extensions.gen_salt(text,int) returns text language sql as $$ select '$test$'; $$;
+ create function extensions.crypt(text,text) returns text language sql as $$ select '$test$'||$1; $$;
  create function award_xp(p_child uuid,p_family uuid,p_xp integer) returns void language sql as $$ update profiles set xp_total=xp_total+p_xp where id=p_child;update families set family_xp=family_xp+p_xp where id=p_family; $$;
  insert into families(id) values('${F}'),('${F2}');
  insert into profiles(id,family_id,role) values('${C}','${F}','child'),('${P}','${F}','parent'),('${C2}','${F2}','child'),('${P2}','${F2}','parent');
@@ -25,6 +32,8 @@ async function setup() {
  const migration=await readFile(new URL('../supabase/migrations/20261109052008_family_controls_pilot.sql',import.meta.url),'utf8')
  await db.exec(migration)
  await db.exec(await readFile(new URL('../supabase/migrations/20261109054611_companion_remote_maintenance.sql',import.meta.url),'utf8'))
+ await db.exec(await readFile(new URL('../supabase/migrations/20261111143134_companion_release_schema_and_stop_verification.sql',import.meta.url),'utf8'))
+ await db.exec(await readFile(new URL('../supabase/migrations/20261111143718_companion_stop_pin_transition_and_access.sql',import.meta.url),'utf8'))
  return db
 }
 async function money(db:PGlite,action:string,body:unknown,actor=P,child=C,family=F) { await db.query('select family_money_action($1,$2,$3,$4,$5::jsonb)',[family,child,actor,action,JSON.stringify(body)]) }
@@ -175,5 +184,35 @@ test('remote commands enforce device/family scope, idempotency, fixed actions, e
    assert.equal((await db.query<{ok:boolean}>('select has_table_privilege($1,$2,$3) ok',[role,'companion_commands','SELECT'])).rows[0].ok,false)
    assert.equal((await db.query<{ok:boolean}>('select has_function_privilege($1,$2,$3) ok',[role,'companion_next_command(uuid)','EXECUTE'])).rows[0].ok,false)
   }
+ }finally{await db.close()}
+})
+
+
+test('stop PIN remains server-only, scoped, throttled across clients and revoked devices cannot authorize',async()=>{
+ const db=await setup(),id='90000000-0000-4000-8000-000000000001',second='90000000-0000-4000-8000-000000000002'
+ try{
+  await db.query('insert into companion_clients(id,family_id,child_id) values($1,$3,$4),($2,$3,$4)',[id,second,F,C])
+  const verify=async(client:string,pin:string)=>(await db.query<{r:string}>('select companion_verify_stop($1,$2) r',[client,pin])).rows[0].r
+  assert.equal(await verify(id,''),'allowed')
+  await assert.rejects(db.query('select companion_set_stop_pin($1,$2,$3,$4)',[F,C,C,'1234']))
+  await db.query('select companion_set_stop_pin($1,$2,$3,$4)',[F,C,P,'1234'])
+  const stored=(await db.query<{stop_pin:null;stop_pin_hash:string}>('select stop_pin,stop_pin_hash from companion_limits')).rows[0]
+  assert.equal(stored.stop_pin,null);assert.notEqual(stored.stop_pin_hash,'1234')
+  for(let i=0;i<5;i++)assert.equal(await verify(i%2?id:second,'0000'),'wrong_pin')
+  assert.equal(await verify(id,'1234'),'throttled')
+  await db.exec("update companion_stop_attempts set window_started=now()-interval '16 minutes'")
+  assert.equal(await verify(id,'1234'),'allowed')
+  await db.query('update companion_clients set revoked_at=now() where id=$1',[id])
+  await assert.rejects(verify(id,'1234'))
+  await db.query('select companion_set_stop_pin($1,$2,$3,$4)',[F,C,P,null])
+  assert.equal(await verify(second,''),'allowed')
+  await db.query('update companion_limits set stop_pin=$1 where child_id=$2',['4321',C])
+  assert.equal((await db.query<{stop_pin:null}>('select stop_pin from companion_limits')).rows[0].stop_pin,null)
+  assert.equal(await verify(second,'4321'),'allowed')
+  await db.exec('set role anon')
+  await assert.rejects(db.query('select * from public_profiles'))
+  await assert.rejects(db.query('select cleanup_old_pin_attempts()'))
+  await assert.rejects(db.query('select * from companion_stop_attempts'))
+  await assert.rejects(db.query('select companion_verify_stop($1,$2)',[second,'']))
  }finally{await db.close()}
 })

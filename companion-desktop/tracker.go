@@ -46,9 +46,12 @@ type Engine struct {
 	demoHUDDisplayed    bool
 	activationRequested bool
 	launcherPID         int
+	launcherVersion     string
+	activationMu        sync.Mutex
 	mu                  sync.Mutex
 	Ledger              Ledger
 	account             Account
+	network             *Network
 	pin                 string
 	dir                 string
 	before              Observation
@@ -70,13 +73,11 @@ func newEngine(dir string, account Account, demo bool) (*Engine, error) {
 	ledgerPath := filepath.Join(dir, "ledger.json")
 	b, err := os.ReadFile(ledgerPath)
 	if err == nil {
-		bad := len(b) > 8<<20
-		if !bad {
-			bad = json.Unmarshal(b, &e.Ledger) != nil
+		if len(b) > 8<<20 {
+			return nil, fmt.Errorf("saved usage is too large; preserve ledger.json and restore a valid backup before starting")
 		}
-		if bad {
-			_ = os.Rename(ledgerPath, filepath.Join(dir, "ledger.backup.json"))
-			e.Ledger = Ledger{}
+		if err := json.Unmarshal(b, &e.Ledger); err != nil {
+			return nil, fmt.Errorf("saved usage is damaged; preserve ledger.json and restore a valid backup before starting: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, err
@@ -108,6 +109,13 @@ func newEngine(dir string, account Account, demo bool) (*Engine, error) {
 		e.Ledger.Day = dayOf(now)
 		e.Ledger.Totals = map[string]float64{}
 		e.Ledger.Gaps = 0
+	}
+	// Earlier builds serialized stop_pin in ledger.json. Decode only the
+	// presence bit, then rewrite immediately so new saves never retain it.
+	if strings.Contains(string(b), `"stop_pin"`) {
+		if err := e.save(); err != nil {
+			return nil, fmt.Errorf("could not sanitize saved policy: %w", err)
+		}
 	}
 	return e, nil
 }
@@ -180,10 +188,10 @@ func (e *Engine) sample(now time.Time, after Observation) {
 		e.Ledger.BucketApps = map[string]float64{}
 		e.Ledger.BucketGaps = now.Sub(midnight).Seconds()
 		e.Ledger.Gaps = e.Ledger.BucketGaps
-	} else if e.before.Available && after.Available && e.before.Executable == after.Executable {
-		if _, ok := e.Ledger.BucketApps[after.Executable]; ok || len(e.Ledger.BucketApps) < 100 {
-			e.Ledger.BucketApps[after.Executable] += elapsed
-			e.Ledger.Totals[after.Executable] += elapsed
+	} else if charge := e.chargeableApp(after); charge != "" {
+		if _, ok := e.Ledger.BucketApps[charge]; ok || len(e.Ledger.BucketApps) < 100 {
+			e.Ledger.BucketApps[charge] += elapsed
+			e.Ledger.Totals[charge] += elapsed
 		} else {
 			e.Ledger.BucketGaps += elapsed
 			e.Ledger.Gaps += elapsed
@@ -198,6 +206,21 @@ func (e *Engine) sample(now time.Time, after Observation) {
 	if now.Sub(e.Ledger.BucketStart) >= 5*time.Minute {
 		e.finish(now)
 	}
+}
+
+// Under a shared game budget, an interval with a game at both ends is
+// charged once even if foreground selection switches between running games.
+func (e *Engine) chargeableApp(after Observation) string {
+	if !e.before.Available || !after.Available {
+		return ""
+	}
+	if e.before.Executable == after.Executable {
+		return after.Executable
+	}
+	if !protected[e.before.Executable] && !protected[after.Executable] && e.rule(e.before.Executable).Category == "game" && e.rule(after.Executable).Category == "game" {
+		return e.before.Executable
+	}
+	return ""
 }
 func (e *Engine) save() error {
 	e.mu.Lock()
@@ -292,7 +315,7 @@ func (e *Engine) remainingAt(name string, now time.Time) (float64, bool) {
 }
 func (e *Engine) enforce(o Observation, now time.Time) {
 	e.mu.Lock()
-	if o.Available && o.PID != 0 && !protected[o.Executable] {
+	if o.Available && !o.BackgroundGame && o.PID != 0 && !protected[o.Executable] && e.rule(o.Executable).Category != "school" {
 		blocked := e.Ledger.Policy.Settings.BlockedExecutables
 		for _, b := range blocked {
 			if strings.EqualFold(b, o.Executable) {
@@ -302,7 +325,7 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 			}
 		}
 	}
-	if o.Available && o.PID != 0 && !protected[o.Executable] && e.rule(o.Executable).Category == "game" {
+	if o.Available && !o.BackgroundGame && o.PID != 0 && !protected[o.Executable] && e.rule(o.Executable).Category == "game" {
 		if e.seenGames == nil {
 			e.seenGames = map[uint32]string{}
 		}
@@ -341,6 +364,11 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 	}
 	deadline, ok := e.deadlines[o.Executable]
 	if !ok {
+		if o.BackgroundGame {
+			e.Action = "Game time used · close will wait until the game is foreground"
+			e.mu.Unlock()
+			return
+		}
 		deadline = now.Add(30 * time.Second)
 		e.deadlines[o.Executable] = deadline
 		e.Action = "Game time is up. This game will close in 30 seconds."
@@ -352,6 +380,11 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 		return
 	}
 	e.Action = "Requesting game close…"
+	if o.BackgroundGame {
+		e.Action = "Game time used · close will wait until the game is foreground"
+		e.mu.Unlock()
+		return
+	}
 	e.mu.Unlock()
 	err := closeObservedGame(o)
 	e.mu.Lock()
@@ -389,6 +422,10 @@ func (e *Engine) enforceFamily(o Observation, now time.Time, limited bool, remai
 		return
 	}
 	if e.Ledger.FamilyCloseDeadline.IsZero() {
+		if o.BackgroundGame {
+			e.Action = "Game time used · close will wait until the game is foreground"
+			return
+		}
 		e.Ledger.FamilyCloseDeadline = now.Add(30 * time.Second)
 		e.Ledger.FamilyCloseDay = e.Ledger.Day
 		if err := e.saveLocked(); err != nil {
@@ -401,6 +438,10 @@ func (e *Engine) enforceFamily(o Observation, now time.Time, limited bool, remai
 		return
 	}
 	e.Action = "Requesting game close: " + reason
+	if o.BackgroundGame {
+		e.Action = "Game time used · close will wait until the game is foreground"
+		return
+	}
 	// Avoid holding the mutex while asking Windows to close a process.
 	e.mu.Unlock()
 	err := closeObservedGame(o)

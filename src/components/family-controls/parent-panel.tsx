@@ -44,11 +44,11 @@ export function FamilyControlsParent() {
       <label className="block">Child<select className="field mt-2" value={id || ''} onChange={e => { setSelected(e.target.value); setNotice('') }}>{d?.children.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       {notice && <p className="panel p-3 text-[14px]" role={save.isError ? 'alert' : 'status'}>{notice}</p>}
       {!o ? <p>Add a child in Family first.</p> : <>
-        <section className="panel space-y-2 p-5"><h2 className="text-[20px] font-semibold">Today · {o.day}</h2><p><strong>{duration(o.game.remainingSeconds)}</strong> game time left from {duration(o.game.grantedSeconds)} earned{o.game.extraGrantSeconds>0?` (includes ${duration(o.game.extraGrantSeconds)} bonus)`:''}, based on the last PC upload.</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.reason}</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.remainingTasks} of {o.game.requiredCount} required responsibilities still need completion or review. School and YouTube do not use game minutes.</p><p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>PC activity can be about five minutes behind. Applies to classified games while the pilot app is running; this is not native filtering or a whole PC bedtime lock.</p>
-          {o.settings.enabled&&<div className="flex flex-wrap items-center gap-3 border-t pt-3"><p className="flex-1 text-[14px]">{o.game.paused?'Games are currently paused on the connected PC.':'Games are currently running normally.'}</p><button className="btn btn-quiet" disabled={save.isPending} onClick={()=>act({action:'set-paused',paused:!o.game.paused})}>{o.game.paused?'Resume games':'Pause games'}</button></div>}
+        <section className="panel space-y-2 p-5"><h2 className="text-[20px] font-semibold">Today · {o.day}</h2>{o.settings.enabled ? <p><strong>{duration(o.game.remainingSeconds)}</strong> game time left from {duration(o.game.grantedSeconds)} earned{o.game.extraGrantSeconds>0?` (includes ${duration(o.game.extraGrantSeconds)} bonus)`:''}, based on the last PC upload.</p> : <p>Family game rules are off. The values below are saved settings; the legacy PC allowance remains in effect until you enable these rules.</p>}<p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.reason}</p><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>{o.game.remainingTasks} of {o.game.requiredCount} required responsibilities still need completion or review. School and YouTube do not use game minutes.</p><p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>PC activity can be about five minutes behind. Applies to classified games while the pilot app is running; this is not native filtering or a whole PC bedtime lock.</p>
+          {o.settings.enabled&&<div className="flex flex-wrap items-center gap-3 border-t pt-3"><p className="flex-1 text-[14px]">{o.game.paused?'Parent pause is on.':'Parent pause is off. The schedule and responsibility rules can still pause games.'}</p><button className="btn btn-quiet" disabled={save.isPending} onClick={()=>act({action:'set-paused',paused:!o.game.paused})}>{o.game.paused?'Resume games':'Pause games'}</button></div>}
         </section>
         <IncidentLog incidents={o.incidents} busy={save.isPending} onAdd={(kind,note,consequence)=>act({action:'add-incident',kind,note,consequence})} onResolve={(incidentId,note)=>act({action:'resolve-incident',incidentId,note})} />
-        <ExtraGrantEditor childId={o.childId} enabled={o.settings.enabled} extraGrantSeconds={o.game.extraGrantSeconds} busy={save.isPending} onSave={(minutes,note)=>act({action:'extra-grant',minutes,note})} />
+        <ExtraGrantEditor enabled={o.settings.enabled} extraGrantSeconds={o.game.extraGrantSeconds} busy={save.isPending} onSave={(minutes,note)=>act({action:'extra-grant',minutes,note})} />
         <SettingsEditor key={`${id}-${o.settings.revision}`} initial={o.settings} privileges={d?.privileges || []} busy={save.isPending} onSave={settings => act({ action: 'settings', settings })} />
         <MoneyPanel key={id} overview={o} busy={save.isPending} onAction={act} />
         <section className="panel space-y-2 p-4"><h2 className="text-[18px] font-semibold">Connected PCs</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>One linked active PC per child in this pilot. If another PC is linked, game time pauses until you unlink the extra account from PC time.</p>{o.devices.length ? o.devices.map(dev => <p key={dev.id} className="text-[14px]">{dev.name} · {dev.last_seen_at ? `Last seen ${clock(dev.last_seen_at)}` : 'Waiting for first check-in'} · {dev.applied_at ? `Settings revision ${dev.applied_revision ?? 'unknown'} acknowledged ${clock(dev.applied_at)}${dev.applied_revision === o.settings.revision ? '' : `; current revision ${o.settings.revision} awaits acknowledgement`}` : `Current settings revision ${o.settings.revision} awaits acknowledgement`}{needsAgentUpdate(dev.version) ? ' · Update the PC app to version 0.3.0 or newer for these rules.' : ''}</p>) : <p className="text-[14px]">No linked PC yet. Link one from PC time.</p>}<p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Acknowledged settings do not confirm fresh chore or usage data.</p><a className="btn btn-quiet" href="/pc">PC time & linking</a></section>
@@ -104,7 +104,7 @@ function MoneyPanel({ overview: o, busy, onAction }: { overview: FamilyOverview;
   </section>
 }
 
-function ExtraGrantEditor({ childId, enabled, extraGrantSeconds, busy, onSave }: { childId: string; enabled: boolean; extraGrantSeconds: number; busy: boolean; onSave: (minutes: number, note: string) => void }) {
+function ExtraGrantEditor({ enabled, extraGrantSeconds, busy, onSave }: { enabled: boolean; extraGrantSeconds: number; busy: boolean; onSave: (minutes: number, note: string) => void }) {
   const [minutes, setMinutes] = useState('')
   const [note, setNote] = useState('')
   const [editing, setEditing] = useState(false)
@@ -113,7 +113,7 @@ function ExtraGrantEditor({ childId, enabled, extraGrantSeconds, busy, onSave }:
   if (!editing && !active) return (
     <section className="panel p-5 space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <div><h2 className="text-[18px] font-semibold">Extra time today</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Grant bonus minutes on top of today's earned time (birthdays, special occasions).</p></div>
+        <div><h2 className="text-[18px] font-semibold">Extra time today</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Grant bonus minutes on top of today&apos;s earned time (birthdays, special occasions).</p></div>
         <button className="btn btn-quiet shrink-0" onClick={() => setEditing(true)}>Grant extra</button>
       </div>
     </section>
@@ -158,7 +158,7 @@ function IncidentLog({ incidents, busy, onAdd, onResolve }: { incidents: FamilyI
   const resolved = incidents.filter(i => i.resolved_at)
   const submit = () => { if (!note.trim()) return; onAdd(kind, note.trim(), consequence); setNote('') }
   return <section className="panel space-y-4 p-5">
-    <div><h2 className="text-[20px] font-semibold">Behaviour log</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Record a behaviour issue. Set "Block games" to put games on hold until you resolve it.</p></div>
+    <div><h2 className="text-[20px] font-semibold">Behaviour log</h2><p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Record a behaviour issue. Set &quot;Block games&quot; to put games on hold until you resolve it.</p></div>
     <div className="flex flex-wrap gap-2">{INCIDENT_KINDS.map(k => <button key={k.value} className={`btn ${kind===k.value?'btn-primary':'btn-quiet'}`} onClick={()=>setKind(k.value)}>{k.label}</button>)}</div>
     <label className="block text-[14px]">What happened<textarea className="field mt-1" maxLength={500} rows={2} placeholder="Briefly describe what happened…" value={note} onChange={e => setNote(e.target.value)} /></label>
     <div className="flex items-center gap-4">

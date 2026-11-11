@@ -6,8 +6,35 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
+
+func launcherVersionCompatible(version string) bool {
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	values := [3]int{}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 || n > 999 {
+			return false
+		}
+		values[i] = n
+	}
+	return values[0] > 0 || (values[0] == 0 && (values[1] > 3 || (values[1] == 3 && values[2] >= 6)))
+}
+func (e *Engine) remoteActivationAvailable() bool {
+	return e.launcherPID > 0 && launcherVersionCompatible(e.launcherVersion)
+}
+func (e *Engine) reportedLauncherVersion() string {
+	if e.launcherVersion == "" || len(e.launcherVersion) > 30 {
+		return "unknown"
+	}
+	return e.launcherVersion
+}
 
 type maintenanceCommand struct {
 	ID        string `json:"id"`
@@ -150,7 +177,7 @@ func (e *Engine) executeMaintenance(c *maintenanceCommand, n *Network) maintenan
 			reason = "No accepted policy"
 		}
 		e.mu.Unlock()
-		r.Result = map[string]any{"version": appVersion, "platform": runtime.GOOS + "/" + runtime.GOARCH, "policyRevision": revision, "policyAgeSeconds": age, "familyEnabled": enabled, "gamingAllowed": allowed, "reason": boundedReason(reason), "updateOutcome": "not_checked", "updateStatus": e.updateState()}
+		r.Result = map[string]any{"version": appVersion, "platform": runtime.GOOS + "/" + runtime.GOARCH, "launcherVersion": e.reportedLauncherVersion(), "policyRevision": revision, "policyAgeSeconds": age, "familyEnabled": enabled, "gamingAllowed": allowed, "remoteActivationAvailable": e.remoteActivationAvailable(), "reason": boundedReason(reason), "updateOutcome": "not_checked", "updateStatus": e.updateState()}
 	case "check-update":
 		r.Result["updateOutcome"], r.Result["updateStatus"] = e.checkMaintenanceUpdate(n)
 		if r.Result["updateOutcome"] == "failed" {
@@ -171,7 +198,9 @@ func (e *Engine) executeMaintenance(c *maintenanceCommand, n *Network) maintenan
 	return r
 }
 func (e *Engine) prepareApplyUpdate() (string, string) {
-	if e.launcherPID == 0 {
+	e.activationMu.Lock()
+	defer e.activationMu.Unlock()
+	if !e.remoteActivationAvailable() {
 		return "failed", "Install the current ChoreZap package once to enable remote activation"
 	}
 	e.mu.Lock()
@@ -244,7 +273,7 @@ func boundedReason(s string) string {
 func (e *Engine) updateState() string {
 	dir := filepath.Join(e.dir, "updates")
 	if _, _, err := readRelease(dir, "pending.json"); err == nil {
-		return "Verified update staged for next app start"
+		return "Verified update staged; waiting for fresh policy and no running games"
 	}
 	if _, _, err := readRelease(dir, "active.json"); err == nil {
 		return "Verified update active"
@@ -264,7 +293,7 @@ func (e *Engine) checkMaintenanceUpdate(n *Network) (string, string) {
 		return "failed", "Signed update check or staging failed"
 	}
 	if pending, _, err := readRelease(dir, "pending.json"); err == nil && pending.Sequence > floor {
-		return "staged", "Verified update staged for next app start"
+		return "staged", "Verified update staged; waiting for fresh policy and no running games"
 	}
 	return "current", "No newer signed update available"
 }
