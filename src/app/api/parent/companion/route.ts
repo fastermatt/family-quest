@@ -12,11 +12,12 @@ export async function GET(req:NextRequest){
  const {data:children}=await admin.from('profiles').select('id,name').eq('family_id',me.family_id).eq('role','child')
  const childId=req.nextUrl.searchParams.get('childId')??children?.[0]?.id
  if(!childId||!children?.some(c=>c.id===childId))return NextResponse.json({children:children??[],clients:[],apps:[],rules:[],settings:{gaming_minutes:null,paused:false,mode:'warn'}})
- const [clients,rules,settings,batches]=await Promise.all([
+ const [clients,rules,settings,batches,browse]=await Promise.all([
   admin.from('companion_clients').select('id,name,last_seen_at,version').eq('family_id',me.family_id).eq('child_id',childId).is('revoked_at',null),
   admin.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',me.family_id).eq('child_id',childId),
   admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin,blocked_executables').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
   admin.from('companion_activity').select('apps,period_end').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).order('period_end',{ascending:false}).limit(1500),
+  admin.from('companion_browse_history').select('entries').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).maybeSingle(),
  ])
  if(clients.error||rules.error||settings.error||batches.error)return desktopError('Could not load PC activity.',503)
  let family
@@ -24,7 +25,7 @@ export async function GET(req:NextRequest){
  const apps=aggregateApps(batches.data??[])
  const effective=effectiveGameRules(apps,rules.data??[])
  const baseSettings={gaming_minutes:null,paused:false,mode:'warn',stop_pin:null,blocked_executables:[]}
- return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...baseSettings,...(settings.data??{}),gaming_minutes:family.game.grantedSeconds/60}:{...baseSettings,...(settings.data??{})},apps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay()},{headers:{'Cache-Control':'no-store'}})
+ return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...baseSettings,...(settings.data??{}),gaming_minutes:family.game.grantedSeconds/60}:{...baseSettings,...(settings.data??{})},apps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay(),browse:browse.data?.entries??[]},{headers:{'Cache-Control':'no-store'}})
 }
 export async function POST(req:NextRequest){
  try{

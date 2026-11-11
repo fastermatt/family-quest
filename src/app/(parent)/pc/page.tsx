@@ -6,7 +6,8 @@ import {DeviceMaintenance} from '@/components/family-controls/device-maintenance
 import type {GameSuggestion} from '@/lib/companion/game-suggestions'
 interface Rule{executable:string;label:string;category:'game'|'school'|'other';daily_minutes:number|null}
 interface Settings{gaming_minutes:number|null;paused:boolean;mode:'warn'|'close';stop_pin:string|null;blocked_executables:string[]}
-interface Data{familyRulesEnabled?:boolean;familyReason?:string;suggestions?:GameSuggestion[];childId?:string;children:{id:string;name:string}[];clients:{id:string;name:string;last_seen_at:string|null;version:string|null}[];apps:{executable:string;seconds:number}[];rules:Rule[];settings:Settings;lastUpload?:string;day?:string}
+interface BrowseEntry{domain:string;category:string;title?:string;seconds:number}
+interface Data{familyRulesEnabled?:boolean;familyReason?:string;suggestions?:GameSuggestion[];childId?:string;children:{id:string;name:string}[];clients:{id:string;name:string;last_seen_at:string|null;version:string|null}[];apps:{executable:string;seconds:number}[];rules:Rule[];settings:Settings;browse:BrowseEntry[];lastUpload?:string;day?:string}
 const time=(s:number)=>`${Math.floor(s/3600)?Math.floor(s/3600)+'h ':''}${Math.floor(s%3600/60)}m`
 async function request(body:unknown){const r=await fetch('/api/parent/companion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error??'Could not save.');return d}
 export default function PCPage(){
@@ -22,6 +23,7 @@ export default function PCPage(){
  {notice&&<p role="status" className="rounded-xl p-3 text-[14px]" style={{background:'var(--surface-2)'}}>{notice}</p>}
  {!id?<p>Add a child in Family first.</p>:<>
  <section className="panel p-5"><p className="text-[14px]" style={{color:'var(--ink-2)'}}>GAMING TODAY · {d.day??'No data'}</p><p className="my-2 text-[42px] font-bold" style={{color:'var(--accent)'}}>{time(gaming)}</p><p style={{color:'var(--ink-2)'}}>{d.settings.gaming_minutes===null?'No shared limit':`${Math.max(0,Math.floor(d.settings.gaming_minutes-gaming/60))} minutes left of ${d.settings.gaming_minutes}`}</p><p className="mt-3 text-[13px]" style={{color:'var(--ink-3)'}}>{d.lastUpload?'Last activity upload '+new Date(d.lastUpload).toLocaleString('en-US',{timeZone:'America/Denver',timeZoneName:'short'}):'No foreground activity uploaded yet.'} · Updates about every 5 minutes.</p></section>
+ {!!d.browse?.length&&<BrowseHistory key={id+d.day} entries={d.browse}/>}
  <LimitEditor familyRulesEnabled={d.familyRulesEnabled??false} key={id+JSON.stringify(d.settings)} settings={d.settings} busy={save.isPending} onSave={s=>submit({action:'limits',gamingMinutes:s.gaming_minutes,paused:s.paused,mode:s.mode})}/>
  <StopPinEditor key={id+(d.settings.stop_pin??'')} stopPin={d.settings.stop_pin} busy={save.isPending} onSave={pin=>submit({action:'set-stop-pin',stopPin:pin})}/>
  <BlockedAppsEditor key={id+JSON.stringify(d.settings.blocked_executables)} blocked={d.settings.blocked_executables??[]} busy={save.isPending} onSave={executables=>submit({action:'set-blocked-apps',executables})}/>
@@ -42,6 +44,44 @@ function AppEditor({app,busy,onSave}:{app:{executable:string;seconds:number;rule
  return <details className="row my-3 p-4"><summary className="cursor-pointer"><span className="font-semibold break-words">{app.rule?.label??app.suggestion?.label??app.executable}</span><span className="float-right ml-3">{time(app.seconds)}</span><p className="mt-1 text-[13px]" style={{color:'var(--ink-2)'}}>{app.rule?.category==='game'?'Game':app.rule?.category==='school'?'School · always available':app.rule?'Other':app.suggestion?'Suggested game · awaiting your review':'Not classified'} · Edit</p></summary><div className="mt-4 space-y-3"><p className="break-all text-[13px]">{app.executable}</p><label className="block text-[14px]">Display name<input className="field mt-1" value={r.label} maxLength={60} onChange={e=>set({...r,label:e.target.value})}/></label><label className="block text-[14px]">Category<select className="field mt-1" value={r.category} onChange={e=>set({...r,category:e.target.value as Rule['category']})}><option value="other">Other / unclassified</option><option value="game">Game</option><option value="school">School — always available</option></select></label>{r.category==='game'&&<label className="block text-[14px]">This game's daily minutes (blank = shared allowance only)<input type="number" min={0} max={1440} className="field mt-1" value={r.daily_minutes??''} onChange={e=>set({...r,daily_minutes:e.target.value===''?null:Number(e.target.value)})}/></label>}<button className="btn btn-quiet" disabled={busy} onClick={()=>onSave({executable:r.executable,label:r.label,category:r.category,dailyMinutes:r.daily_minutes})}>Save application</button></div></details>
 }
 
+const CAT_LABEL:{[k:string]:string}={youtube:'YouTube',gaming:'Gaming sites',social:'Social media',school:'School',other:'Other browsing'}
+const CAT_ORDER=['youtube','gaming','social','school','other']
+
+function BrowseHistory({entries}:{entries:BrowseEntry[]}){
+ const[expanded,setExpanded]=useState<string|null>(null)
+ // group by category, then by domain+title within category
+ const byCat=CAT_ORDER.map(cat=>{
+  const rows=entries.filter(e=>e.category===cat)
+  if(!rows.length)return null
+  const total=rows.reduce((s,e)=>s+e.seconds,0)
+  return {cat,total,rows:[...rows].sort((a,b)=>b.seconds-a.seconds)}
+ }).filter(Boolean) as {cat:string;total:number;rows:BrowseEntry[]}[]
+ if(!byCat.length)return null
+ const grandTotal=entries.reduce((s,e)=>s+e.seconds,0)
+ return <section className="panel p-5 space-y-4">
+  <div><h2 className="text-[20px] font-semibold">Web history today</h2><p className="text-[13px] mt-1" style={{color:'var(--ink-2)'}}>From Edge and Chrome on the PC · updates every 30 minutes</p></div>
+  <div className="space-y-2">
+   {byCat.map(({cat,total,rows})=>{
+    const pct=grandTotal>0?Math.round(total/grandTotal*100):0
+    const isYT=cat==='youtube'
+    return <div key={cat}>
+     <button className="w-full text-left" onClick={()=>setExpanded(expanded===cat?null:cat)}>
+      <div className="flex items-baseline justify-between"><span className="font-medium text-[15px]">{CAT_LABEL[cat]}</span><span className="text-[13px]" style={{color:'var(--ink-2)'}}>{time(total)} · {pct}%</span></div>
+      <div className="mt-1 h-2 rounded-full overflow-hidden" style={{background:'var(--surface-3)'}}><div className="h-full rounded-full" style={{width:pct+'%',background:cat==='youtube'?'#ff0000':cat==='gaming'?'var(--teal)':cat==='social'?'var(--accent)':cat==='school'?'var(--school)':'#5b6880'}}/></div>
+     </button>
+     {expanded===cat&&<ul className="mt-2 space-y-1 pl-2">
+      {rows.slice(0,isYT?20:10).map((e,i)=><li key={i} className="flex items-baseline justify-between text-[13px]">
+       <span className="min-w-0 mr-3 truncate" style={{color:'var(--ink-1)'}}>{e.title||e.domain}</span>
+       <span className="shrink-0" style={{color:'var(--ink-2)'}}>{time(e.seconds)}</span>
+      </li>)}
+      {rows.length>(isYT?20:10)&&<li className="text-[12px]" style={{color:'var(--ink-3)'}}>+{rows.length-(isYT?20:10)} more</li>}
+     </ul>}
+    </div>
+   })}
+  </div>
+  <p className="text-[12px]" style={{color:'var(--ink-3)'}}>Browsing history is from the child&apos;s Windows user account only. Incognito/private tabs are not included.</p>
+ </section>
+}
 function StopPinEditor({stopPin,busy,onSave}:{stopPin:string|null;busy:boolean;onSave:(pin:string|null)=>void}){
  const[pin,setPin]=useState(stopPin??'')
  const[confirm,setConfirm]=useState(stopPin??'')

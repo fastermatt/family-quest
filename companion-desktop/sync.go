@@ -262,6 +262,25 @@ func (e *Engine) syncOnce(n *Network) {
 }
 func (e *Engine) syncFailure(err error) { e.mu.Lock(); e.SyncError = err.Error(); e.mu.Unlock() }
 
+func (e *Engine) browseOnce(n *Network) {
+	if e.demo {
+		return
+	}
+	e.mu.Lock()
+	token := e.account.Token
+	linked := e.Ledger.Policy.ClientID != ""
+	e.mu.Unlock()
+	if !linked {
+		return
+	}
+	entries := collectBrowseHistory()
+	if len(entries) == 0 {
+		return
+	}
+	batch := BrowseBatch{Day: dayOf(time.Now()), Entries: entries}
+	_, _ = n.request("/api/companion/v2/browse", token, batch, nil)
+}
+
 // Preserve the rejected payload for investigation; never pretend it uploaded.
 // Aggregated app totals cannot safely be sliced to remove a partial overlap.
 func (e *Engine) archiveOverlap(batch Batch) error {

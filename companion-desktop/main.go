@@ -117,11 +117,14 @@ func run() error {
 		if !*demo {
 			e.syncOnce(network)
 			e.maintenanceOnce(network)
+			go e.browseOnce(network)
 		}
 		ticker := time.NewTicker(time.Minute)
 		commands := time.NewTicker(15 * time.Second)
+		browse := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		defer commands.Stop()
+		defer browse.Stop()
 		for {
 			select {
 			case <-ctx.Done():
@@ -133,6 +136,10 @@ func run() error {
 			case <-commands.C:
 				if !*demo {
 					e.maintenanceOnce(network)
+				}
+			case <-browse.C:
+				if !*demo {
+					go e.browseOnce(network)
 				}
 			}
 		}

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.3.2"
+const appVersion = "0.3.3"
 
 type Observation struct {
 	Executable  string
@@ -79,6 +79,16 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 	}{minutes, s.Paused, s.Mode, s.StopPin, s.BlockedExecutables})
 }
 
+type BrowseEntry struct {
+	Domain   string  `json:"domain"`
+	Category string  `json:"category"`
+	Title    string  `json:"title,omitempty"`
+	Seconds  float64 `json:"seconds"`
+}
+type BrowseBatch struct {
+	Day     string        `json:"day"`
+	Entries []BrowseEntry `json:"entries"`
+}
 type FamilyPolicy struct {
 	Enabled   bool   `json:"enabled"`
 	Revision  int64  `json:"revision"`
