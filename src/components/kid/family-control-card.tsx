@@ -19,7 +19,7 @@ export function FamilyControlCard() {
           {o.settings.enabled ? <GameTimeCard overview={o} /> : <div className="panel p-5"><p className="text-[14px]" style={{ color: 'var(--ink-2)' }}>Your family has not turned on earned game minutes yet.</p></div>}
           {o.money.initialized && <div className="panel mt-4 p-5"><h3 className="font-semibold">Optional paid work</h3><p className="mt-1 text-[14px]">{money(o.money.debtRemainingCents)} of the family IOU remaining · {money(o.money.cashOwedCents)} cash owed</p><p className="mt-1 text-[12px]" style={{ color: 'var(--ink-2)' }}>Paid jobs first lower the IOU. Your parent records cash after paying you.</p></div>}
           {!!o.jobs.length && <div className="panel mt-4 space-y-3 p-5"><h3 className="mb-1 font-semibold">Jobs from your parent</h3>{o.jobs.map(j => <KidJob key={j.id} job={j} busy={save.isPending} onAction={body => { setNotice(''); save.mutate(body) }} />)}</div>}
-          <p className="mt-4 text-[12px]" style={{ color: 'var(--ink-2)' }}>A linked PC can share supported Edge and Chrome page visits and YouTube links with your parent. These are history records, not proof a video was watched.</p>
+          <p className="mt-4 text-[12px]" style={{ color: 'var(--ink-2)' }}>A linked PC can share supported Edge and Chrome page visits and YouTube links with your parent. These are history records, not proof a video was watched. Parents can also see when PC tracking stops checking in.</p>
           {notice && <p role={save.isError ? 'alert' : 'status'} className="mt-3 text-[13px]">{notice}</p>}
         </>}
     </section>

@@ -36,3 +36,11 @@ Automated coverage includes policy/DST, embedded PostgreSQL money and command tr
 Additive migrations: `20261111143134_companion_release_schema_and_stop_verification.sql` and `20261111143718_companion_stop_pin_transition_and_access.sql` are applied. Existing family and maintenance migrations were already present and were not replayed. Do not roll back financial history. Source branch: `codex/chorezap-family-controls`; production target: `app-family-controls.vercel.app` (not the old family-tasks-deploy project).
 
 Remote commands are limited to diagnostics, update check, controlled activation and countdown demonstration, with device/family scoping, replay safety and ten-minute expiry. No arbitrary shell commands. Read current publication and Windows verification status in the ChoreZap project wiki.
+
+## Tracking notices and administrator access
+
+The parent PC page offers notices for an authorized Stop request, ten minutes without a check-in, and restored contact. Push goes only to the parent who enabled notices, and delivery is best effort; the timeline retains 30 days. Monitoring arms only after a fresh heartbeat after enabling, so an already-offline PC does not create a new alert. Repeated gaps and request retries are deduplicated. Late final requests during the minute after Stop do not immediately claim contact was restored.
+
+A gap can mean sleep, lost power, internet failure, a crash or quitting. It is not evidence of intentional bypass. Cooperative software cannot guarantee alerts when the user knows administrator credentials. Matt confirmed Grey has a standard account but knows another admin password; leave those passwords/account rights unchanged. Remote Windows administrator approval needs a separate privileged native component or managed elevation product; ChoreZap’s game controls do not elevate Windows programs.
+
+The database scheduler calls the hosted monitor once per minute using the existing encrypted ChoreZap scheduler credential. It stays inside Supabase Vault and is validated by a service-only RPC; no secret is committed or returned by APIs. The job must remain paused until its matching endpoint is deployed and verified. Push claims are at-most-once: a delivery crash may lose a push, while the recorded event remains in the parent timeline.

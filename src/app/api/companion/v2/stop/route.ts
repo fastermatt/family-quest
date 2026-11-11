@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
   if (data === 'throttled') return desktopError('throttled', 429)
   if (data === 'wrong_pin') return desktopError('wrong_pin', 403)
   if (data !== 'allowed') return desktopError('verification_unavailable', 503)
+  const {error: presenceError} = await adminClient().rpc('companion_presence_stop', {p_client:client.id})
+  if (presenceError) return desktopError('presence_unavailable', 503)
   return NextResponse.json({ok:true}, {headers:{'Cache-Control':'no-store'}})
  } catch { return desktopError('verification_unavailable', 503) }
 }

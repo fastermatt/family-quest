@@ -17,7 +17,7 @@ async function setup() {
  create table privileges(id uuid primary key,family_id uuid references families);
  create table task_templates(id uuid primary key,family_id uuid references families,proof_type text,photo_required boolean default false,required boolean default true,active boolean default true,xp_value integer default 100);
  create table task_instances(id uuid primary key,template_id uuid references task_templates,assigned_to uuid references profiles,due_date date,status text,xp_awarded integer default 0,reviewed_at timestamptz,review_note text);
- create table companion_clients(id uuid primary key,family_id uuid references families,child_id uuid references profiles,revoked_at timestamptz);
+ create table companion_clients(id uuid primary key,family_id uuid references families,child_id uuid references profiles,revoked_at timestamptz,last_seen_at timestamptz,name text);
  create table companion_limits(family_id uuid,child_id uuid,gaming_minutes int,paused bool default false,mode text default 'warn',primary key(family_id,child_id));
  -- pgcrypto compatibility shim for the embedded DB only. Real crypt verified in hosted rollback test.
  create schema extensions;
@@ -34,6 +34,8 @@ async function setup() {
  await db.exec(await readFile(new URL('../supabase/migrations/20261109054611_companion_remote_maintenance.sql',import.meta.url),'utf8'))
  await db.exec(await readFile(new URL('../supabase/migrations/20261111143134_companion_release_schema_and_stop_verification.sql',import.meta.url),'utf8'))
  await db.exec(await readFile(new URL('../supabase/migrations/20261111143718_companion_stop_pin_transition_and_access.sql',import.meta.url),'utf8'))
+ await db.exec(await readFile(new URL('../supabase/migrations/20261111151000_companion_presence_monitor.sql',import.meta.url),'utf8'))
+ await db.exec(await readFile(new URL('../supabase/migrations/20261111152500_presence_recipient_scope.sql',import.meta.url),'utf8'))
  return db
 }
 async function money(db:PGlite,action:string,body:unknown,actor=P,child=C,family=F) { await db.query('select family_money_action($1,$2,$3,$4,$5::jsonb)',[family,child,actor,action,JSON.stringify(body)]) }
@@ -183,6 +185,74 @@ test('remote commands enforce device/family scope, idempotency, fixed actions, e
   for(const role of ['anon','authenticated']){
    assert.equal((await db.query<{ok:boolean}>('select has_table_privilege($1,$2,$3) ok',[role,'companion_commands','SELECT'])).rows[0].ok,false)
    assert.equal((await db.query<{ok:boolean}>('select has_function_privilege($1,$2,$3) ok',[role,'companion_next_command(uuid)','EXECUTE'])).rows[0].ok,false)
+  }
+ }finally{await db.close()}
+})
+
+
+test('presence monitoring arms on a fresh heartbeat, dedupes transitions, honors stop grace and claims pushes once',async()=>{
+ const db=await setup(),pc='90000000-0000-4000-8000-000000000001',other='90000000-0000-4000-8000-000000000002'
+ try{
+  await db.query('insert into companion_clients(id,family_id,child_id,last_seen_at,name) values($1,$2,$3,now()-interval \'20 minutes\',$4),($5,$2,$3,now(),$6)',[pc,F,C,'Grey PC',other,'Revoked PC'])
+  await db.query('update companion_clients set revoked_at=now(),last_seen_at=now()-interval \'20 minutes\' where id=$1',[other])
+  const save=async(enabled:boolean)=>db.query('select companion_presence_settings_save($1,$2,$3,$4)',[F,C,P,enabled])
+  const scan=async()=>db.query('select companion_presence_scan()')
+  const count=async(kind:string)=> (await db.query<{n:number}>('select count(*)::int n from companion_presence_events where child_id=$1 and kind=$2',[C,kind])).rows[0].n
+
+  // A PC already stale before monitoring was enabled is not reported missing.
+  await save(true)
+  await scan()
+  assert.equal(await count('checkin_missing'),0)
+  assert.equal((await db.query('select 1 from companion_presence_state where client_id=$1',[pc])).rows.length,0)
+  assert.equal((await db.query('select 1 from companion_presence_state where client_id=$1',[other])).rows.length,0)
+  assert.equal((await db.query('select 1 from companion_presence_events where client_id=$1',[other])).rows.length,0)
+  // The first post-enable heartbeat only arms online tracking.
+  await db.query('update companion_clients set last_seen_at=now() where id=$1',[pc])
+  await scan()
+  assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'online')
+  assert.equal(await count('checkin_missing'),0)
+
+  // A missing transition is one event even when the scanner runs repeatedly.
+  await db.query("update companion_presence_settings set enabled_at=now()-interval '20 minutes' where child_id=$1",[C])
+  await db.query("update companion_clients set last_seen_at=now()-interval '11 minutes' where id=$1",[pc])
+  await scan();await scan()
+  assert.equal(await count('checkin_missing'),1)
+  assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'missing')
+
+  // Recovery restores online state exactly once.
+  await db.query('update companion_clients set last_seen_at=now() where id=$1',[pc])
+  await scan();await scan()
+  assert.equal(await count('checkin_restored'),1)
+  assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'online')
+
+  // An authorized Stop creates one event and ignores final in-flight check-ins for 60 seconds.
+  await db.query('select companion_presence_stop($1)',[pc])
+  await db.query('select companion_presence_stop($1)',[pc])
+  assert.equal(await count('stop_requested'),1)
+  const changed=(await db.query<{changed_at:string}>('select changed_at from companion_presence_state where client_id=$1',[pc])).rows[0].changed_at
+  await db.query("update companion_clients set last_seen_at=$2::timestamptz+interval '30 seconds' where id=$1",[pc,changed])
+  await scan()
+  assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'stop_requested')
+  await db.query("update companion_clients set last_seen_at=$2::timestamptz+interval '61 seconds' where id=$1",[pc,changed])
+  await scan()
+  assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'online')
+  assert.equal(await count('checkin_restored'),2)
+
+  // Claimed notices cannot be sent a second time; disabling and revocation stop future events.
+  const first=(await db.query<{n:number}>('select count(*)::int n from companion_presence_claim()')).rows[0].n
+  assert.ok(first >= 3)
+  assert.equal((await db.query<{n:number}>('select count(*)::int n from companion_presence_claim()')).rows[0].n,0)
+  await db.query(`insert into companion_presence_events(family_id,child_id,client_id,notify_parent_id,kind,reference_at,device_name)
+   values($1,$2,$3,$4,'stop_requested',now()+interval '3 minutes','Grey PC')`,[F,C,pc,P2])
+  assert.equal((await db.query<{n:number}>('select count(*)::int n from companion_presence_claim()')).rows[0].n,0)
+  await save(false)
+  await db.query('update companion_clients set last_seen_at=now()-interval \'20 minutes\' where id=$1',[pc])
+  await scan()
+  assert.equal(await count('checkin_missing'),1)
+
+  for(const role of ['anon','authenticated']){
+   for(const table of ['companion_presence_settings','companion_presence_state','companion_presence_events'])assert.equal((await db.query<{ok:boolean}>('select has_table_privilege($1,$2,$3) ok',[role,table,'SELECT'])).rows[0].ok,false)
+   for(const signature of ['companion_presence_scan()','companion_presence_claim()','companion_presence_stop(uuid)','companion_presence_settings_save(uuid,uuid,uuid,boolean)'])assert.equal((await db.query<{ok:boolean}>('select has_function_privilege($1,$2,$3) ok',[role,signature,'EXECUTE'])).rows[0].ok,false)
   }
  }finally{await db.close()}
 })

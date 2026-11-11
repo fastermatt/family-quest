@@ -16,9 +16,9 @@ function load(path:string,mocks:Record<string,unknown>):Record<string,Handler> {
  vm.runInNewContext(code,{module:unit,exports:unit.exports,require:(name:string)=>{if(name in mocks)return mocks[name];if(name.startsWith('@/'))return load('src/'+name.slice(2)+'.ts',mocks);if(name.startsWith('.'))return load(pathModule.join(pathModule.dirname(path),name)+(name.endsWith('.ts')?'':'.ts'),mocks);return require(name)},Response,Request,Headers,URL,Buffer,console},{filename:path})
  return unit.exports
 }
-function fixture(role:'parent'|'child'|'none'='parent',sameFamily=true,rpcError:unknown=null,rpcData:unknown=null) {
+function fixture(role:'parent'|'child'|'none'='parent',sameFamily=true,rpcError:unknown=null,rpcData:unknown=null,rpcByName:Record<string,{error:unknown;data:unknown}>={}) {
  const calls:{name:string;args:Record<string,unknown>}[]=[]
- const admin={rpc:async(name:string,args:Record<string,unknown>)=>{calls.push({name,args});return {error:rpcError,data:rpcData}}}
+ const admin={rpc:async(name:string,args:Record<string,unknown>)=>{calls.push({name,args});return rpcByName[name]??{error:rpcError,data:rpcData}}}
  const me=role==='none'?null:{id:role==='child'?C:P,family_id:F,role}
  const error=(status:number)=>Response.json({error:'denied'},{status})
  const mocks={
@@ -112,4 +112,12 @@ test('device stop derives identity, rejects offline/unlinked/invalid and require
  }
  const failed=await fixture('parent',true,{message:'internal secret'},null).stop.POST(request({pin:'1234'}))
  assert.equal(failed.status,503);assert.equal((await failed.text()).includes('internal secret'),false)
+ const allowedButUnrecorded=fixture('parent',true,null,null,{
+  companion_verify_stop:{error:null,data:'allowed'},
+  companion_presence_stop:{error:{message:'internal secret'},data:null},
+ })
+ const presenceFailure=await allowedButUnrecorded.stop.POST(request({pin:'1234'}))
+ assert.equal(presenceFailure.status,503)
+ assert.equal((await presenceFailure.text()).includes('internal secret'),false)
+ assert.deepEqual(allowedButUnrecorded.calls.map(c=>c.name),['companion_verify_stop','companion_presence_stop'])
 })
