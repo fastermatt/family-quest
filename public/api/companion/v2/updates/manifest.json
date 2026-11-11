@@ -1,7 +1,4 @@
 {
-  "sequence": 12,
-  "version": "0.3.3",
-  "sha256": "3b8d39f9fe91e3b98c04658a65fee914bba04f37618bef0bf079d1aac578aad4",
-  "signature": "RC+KomMZ5PbEM0vqSaYQ/r51wqCuWjGnb21kuS6IKCTIBOgiftXIuA4E78Fd9uXpDdc4PmgW3SxVgcxcTpvsDA==",
-  "url": "/api/companion/v2/updates/3b8d39f9fe91e3b98c04658a65fee914bba04f37618bef0bf079d1aac578aad4.exe"
+  "payload": "eyJzZXF1ZW5jZSI6MTMsInZlcnNpb24iOiIwLjMuNCIsInNoYTI1NiI6ImZlNTBiMTI0OTdkNDZkN2MzOGZmZmMzZDEyZWRkMzE1ODAzMTk4MTRhMzIwN2Q3YzI2MTIyODEyNTA3NDdmNmEiLCJzaXplIjoxMjg0OTY2NCwicHJvdG9jb2wiOjF9",
+  "signature": "u27UFpjUkoAZ/Bkl06lAF470Dp7jeeD7qCsjeWoDoc8zBiNLZFHRUaCy41HcOmAGwzvSsY0b3BPHA0Wq8y0YAg=="
 }

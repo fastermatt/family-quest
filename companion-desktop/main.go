@@ -182,6 +182,17 @@ func run() error {
 						*readyPath = ""
 					}
 				}
+				// Exit cleanly when a new update is staged during this run so the
+				// supervisor can apply it immediately without waiting for a manual restart.
+				if *worker && *readyPath == "" {
+					updateDir := filepath.Join(dir, "updates")
+					if info, statErr := os.Stat(filepath.Join(updateDir, "pending.json")); statErr == nil && info.ModTime().After(started) {
+						e.mu.Lock()
+						e.Action = "Update ready · applying…"
+						e.mu.Unlock()
+						cancel()
+					}
+				}
 			}
 		case <-save.C:
 			if err = e.save(); err != nil {

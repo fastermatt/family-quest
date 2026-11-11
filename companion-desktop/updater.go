@@ -19,7 +19,7 @@ import (
 
 const updatePublicKey = "OhEnZ13gUc/92sAQ1BOLlb2z8OM2Lfj+MV6az7sMz8k="
 const releaseSequence = 6
-const bundledSequence = 10
+const bundledSequence = 13
 const maxUpdateSize = 32 << 20
 
 var errRemoteActivation = errors.New("verified update restart requested")
@@ -150,7 +150,7 @@ func stageRelease(n *Network, dir string, floor int) error {
 	if e = os.Rename(filepath.Join(dir, "pending.json.tmp"), filepath.Join(dir, "pending.json")); e != nil {
 		return e
 	}
-	updateStatus(dir, "Update "+r.Version+" downloaded · applies next time ChoreZap starts")
+	updateStatus(dir, "Update "+r.Version+" ready · applying automatically")
 	return nil
 }
 func readRelease(dir, name string) (release, string, error) {
@@ -368,6 +368,44 @@ func supervise() error {
 			_ = os.Remove(filepath.Join(dir, "activation-acked"))
 			if e != nil {
 				return e
+			}
+			started = time.Now()
+			attempts = 0
+			continue
+		}
+		// Auto-apply any staged update when the worker exits for any reason.
+		if r, p, pinnedManifest, readErr := readPinnedRelease(dir, "pending.json"); readErr == nil && r.Sequence > floor {
+			_ = os.Remove(ready)
+			old := candidate
+			candidate = p
+			_ = os.Remove(filepath.Join(dir, "activation-acked"))
+			cmd, done, ready, e = launch(candidate)
+			healthy := e == nil && waitStartup(done, ready, 45*time.Second)
+			if healthy {
+				if writeErr := writeActiveManifest(dir, pinnedManifest); writeErr != nil {
+					updateStatus(dir, "Update running; could not save selection")
+				} else {
+					floor = r.Sequence
+					currentFloor.Store(int64(floor))
+					active = candidate
+					removePendingIfMatches(dir, r)
+					updateStatus(dir, "Updated to "+r.Version)
+				}
+			} else {
+				if cmd != nil && cmd.Process != nil {
+					_ = cmd.Process.Kill()
+				}
+				bad, _ := json.Marshal(r)
+				_ = os.WriteFile(filepath.Join(dir, "failed.json"), bad, 0600)
+				removePendingIfMatches(dir, r)
+				updateStatus(dir, "Update "+r.Version+" failed startup · restored previous version")
+				time.Sleep(time.Second)
+				_ = os.Remove(ready)
+				candidate = old
+				cmd, done, ready, e = launch(old)
+				if e != nil {
+					return e
+				}
 			}
 			started = time.Now()
 			attempts = 0
