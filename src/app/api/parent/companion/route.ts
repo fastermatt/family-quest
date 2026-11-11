@@ -15,7 +15,7 @@ export async function GET(req:NextRequest){
  const [clients,rules,settings,batches]=await Promise.all([
   admin.from('companion_clients').select('id,name,last_seen_at,version').eq('family_id',me.family_id).eq('child_id',childId).is('revoked_at',null),
   admin.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',me.family_id).eq('child_id',childId),
-  admin.from('companion_limits').select('gaming_minutes,paused,mode').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
+  admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin,blocked_executables').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
   admin.from('companion_activity').select('apps,period_end').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).order('period_end',{ascending:false}).limit(1500),
  ])
  if(clients.error||rules.error||settings.error||batches.error)return desktopError('Could not load PC activity.',503)
@@ -23,7 +23,8 @@ export async function GET(req:NextRequest){
  try{family=await familyOverview(admin,me.family_id,childId)}catch{return desktopError("Could not load family game rules.",503)}
  const apps=aggregateApps(batches.data??[])
  const effective=effectiveGameRules(apps,rules.data??[])
- return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...(settings.data??{paused:false,mode:'warn'}),gaming_minutes:family.game.grantedSeconds/60}:(settings.data??{gaming_minutes:null,paused:false,mode:'warn'}),apps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay()},{headers:{'Cache-Control':'no-store'}})
+ const baseSettings={gaming_minutes:null,paused:false,mode:'warn',stop_pin:null,blocked_executables:[]}
+ return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...baseSettings,...(settings.data??{}),gaming_minutes:family.game.grantedSeconds/60}:{...baseSettings,...(settings.data??{})},apps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay()},{headers:{'Cache-Control':'no-store'}})
 }
 export async function POST(req:NextRequest){
  try{
@@ -71,6 +72,16 @@ export async function POST(req:NextRequest){
    if(family.error||current.error)return desktopError('Could not check current game rules.',503)
    const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,gaming_minutes:family.data?.enabled?(current.data?.gaming_minutes??null):minutes,paused:b.paused,mode:b.mode},{onConflict:'family_id,child_id'})
    if(error)return desktopError('Could not save time limit.',503)
+  }else if(b.action==='set-stop-pin'){
+   const pin=b.stopPin===null||b.stopPin===''?null:String(b.stopPin)
+   if(pin!==null&&!/^\d{4}$/.test(pin))throw new Error('PIN must be exactly 4 digits, or leave blank to remove.')
+   const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,stop_pin:pin},{onConflict:'family_id,child_id'})
+   if(error)return desktopError('Could not save stop PIN.',503)
+  }else if(b.action==='set-blocked-apps'){
+   if(!Array.isArray(b.executables)||b.executables.some((e:unknown)=>typeof e!=='string'||!/^[\w.\-+ ]+\.exe$/i.test(e as string)))throw new Error('Each blocked app must be a .exe filename.')
+   if(b.executables.length>50)throw new Error('Maximum 50 blocked apps.')
+   const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,blocked_executables:b.executables},{onConflict:'family_id,child_id'})
+   if(error)return desktopError('Could not save blocked apps.',503)
   }else if(b.action==='revoke'){
    if(!UUID.test(String(b.clientId)))throw new Error('Invalid PC.')
    const {error}=await admin.from('companion_clients').update({revoked_at:new Date().toISOString()}).eq('id',b.clientId).eq('family_id',me.family_id).eq('child_id',b.childId)

@@ -21,6 +21,15 @@ function render(s){
  el('coverage').textContent=`Unobserved / transitions: ${duration(s.gaps)}. Browsing history, YouTube titles and automatic updates are not included yet.`;
  if(s.syncConflicts)el('coverage').textContent+=' '+s.syncConflicts+' overlapping batches preserved locally for review; some time may be absent from server totals.';
  el('mode').textContent=s.settings.mode==='close'?'Parent selected game closing after a 30-second warning. Requires a fresh synced policy; Windows enforcement must be tested.':'Limits currently show reminders only. Closing games is off.';
+ el('exit').dataset.pin=s.settings.stop_pin||'';
 }
 async function refresh(){try{const r=await fetch('/api/state');if(!r.ok)throw Error();render(await r.json())}catch{el('status').textContent='App stopped or unavailable. Reopen ChoreZap to resume tracking.'}}
-el('exit').onclick=async()=>{if(!confirm('Stop tracking and syncing until you reopen ChoreZap?'))return;await fetch('/api/exit',{method:'POST'});el('status').textContent='ChoreZap stopped.'};refresh();setInterval(refresh,1000);
+el('exit').onclick=async()=>{
+ if(!confirm('Stop tracking and syncing until you reopen ChoreZap?'))return;
+ const pin=el('exit').dataset.pin||'';
+ let entered='';
+ if(pin){entered=prompt('Enter the parent PIN to stop ChoreZap:');if(entered===null)return;}
+ const r=await fetch('/api/exit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:entered})});
+ if(r.status===403){alert('Wrong PIN. Only a parent can stop ChoreZap.');return;}
+ el('status').textContent='ChoreZap stopped.';
+};refresh();setInterval(refresh,1000);

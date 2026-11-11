@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 	_ "time/tzdata"
@@ -291,6 +292,16 @@ func (e *Engine) remainingAt(name string, now time.Time) (float64, bool) {
 }
 func (e *Engine) enforce(o Observation, now time.Time) {
 	e.mu.Lock()
+	if o.Available && o.PID != 0 && !protected[o.Executable] {
+		blocked := e.Ledger.Policy.Settings.BlockedExecutables
+		for _, b := range blocked {
+			if strings.EqualFold(b, o.Executable) {
+				e.mu.Unlock()
+				closeObservedGame(o)
+				return
+			}
+		}
+	}
 	if o.Available && o.PID != 0 && !protected[o.Executable] && e.rule(o.Executable).Category == "game" {
 		if e.seenGames == nil {
 			e.seenGames = map[uint32]string{}

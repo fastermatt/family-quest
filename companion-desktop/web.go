@@ -86,6 +86,21 @@ func (e *Engine) serve(cancel context.CancelFunc) (string, func(), error) {
 				http.Error(w, "Invalid request", 403)
 				return
 			}
+			e.mu.Lock()
+			pin := e.Ledger.Policy.Settings.StopPin
+			e.mu.Unlock()
+			if pin != "" {
+				var body struct {
+					Pin string `json:"pin"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				if subtle.ConstantTimeCompare([]byte(body.Pin), []byte(pin)) != 1 {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(403)
+					_, _ = w.Write([]byte(`{"error":"wrong_pin"}`))
+					return
+				}
+			}
 			w.WriteHeader(204)
 			go cancel()
 		default:

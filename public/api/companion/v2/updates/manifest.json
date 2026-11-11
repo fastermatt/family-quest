@@ -1,1 +1,7 @@
-{"payload":"eyJzZXF1ZW5jZSI6MTAsInZlcnNpb24iOiIwLjMuMSIsInNoYTI1NiI6ImVmMjU2NWYyNjY2NzI3NWE4Yzg4NjMyNTllZDE4YmRjODhiMzJlMTEyMDhlZmMwOTQ2ODY5ZGY0OGFhYjRmMmEiLCJzaXplIjo4ODY4ODY0LCJwcm90b2NvbCI6MX0=","signature":"DVgRCKyNdGoKnZ26MABwnKxul1fxmju/BvTgZ5XZb3di2DUwL6jk8NSH2vHi/RYMY1GDaofamBYT8yyCVWK2Ag=="}
+{
+  "sequence": 11,
+  "version": "0.3.2",
+  "sha256": "8c0ebc91fd946c8d42c49307d53f3d54c5eb674f8debeb17fc86bb9969e9c0fe",
+  "signature": "q+tQ7eSILq4CFR5MeSmqgTEd4enhSBDgkU+7CU5TL0bc1XYW6YpLB2BuIEzsO9WA5UFE+k5QilkYsv5LvjUuAA==",
+  "url": "/api/companion/v2/updates/8c0ebc91fd946c8d42c49307d53f3d54c5eb674f8debeb17fc86bb9969e9c0fe.exe"
+}

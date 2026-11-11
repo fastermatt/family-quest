@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.3.1"
+const appVersion = "0.3.2"
 
 type Observation struct {
 	Executable  string
@@ -32,22 +32,28 @@ type Rule struct {
 	DailyMinutes *int   `json:"daily_minutes"`
 }
 type Settings struct {
-	GamingMinutes *int     `json:"gaming_minutes"`
-	GamingSeconds *float64 `json:"-"`
-	Paused        bool     `json:"paused"`
-	Mode          string   `json:"mode"`
+	GamingMinutes      *int     `json:"gaming_minutes"`
+	GamingSeconds      *float64 `json:"-"`
+	Paused             bool     `json:"paused"`
+	Mode               string   `json:"mode"`
+	StopPin            string   `json:"stop_pin"`
+	BlockedExecutables []string `json:"blocked_executables"`
 }
 
 func (s *Settings) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		GamingMinutes *float64 `json:"gaming_minutes"`
-		Paused        bool     `json:"paused"`
-		Mode          string   `json:"mode"`
+		GamingMinutes      *float64 `json:"gaming_minutes"`
+		Paused             bool     `json:"paused"`
+		Mode               string   `json:"mode"`
+		StopPin            string   `json:"stop_pin"`
+		BlockedExecutables []string `json:"blocked_executables"`
 	}
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
 	}
 	s.Paused, s.Mode = wire.Paused, wire.Mode
+	s.StopPin = wire.StopPin
+	s.BlockedExecutables = wire.BlockedExecutables
 	s.GamingMinutes, s.GamingSeconds = nil, nil
 	if wire.GamingMinutes != nil {
 		if *wire.GamingMinutes < 0 || *wire.GamingMinutes > 100000 || math.IsNaN(*wire.GamingMinutes) || math.IsInf(*wire.GamingMinutes, 0) {
@@ -65,10 +71,12 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 		minutes = *s.GamingSeconds / 60
 	}
 	return json.Marshal(struct {
-		GamingMinutes any    `json:"gaming_minutes"`
-		Paused        bool   `json:"paused"`
-		Mode          string `json:"mode"`
-	}{minutes, s.Paused, s.Mode})
+		GamingMinutes      any      `json:"gaming_minutes"`
+		Paused             bool     `json:"paused"`
+		Mode               string   `json:"mode"`
+		StopPin            string   `json:"stop_pin,omitempty"`
+		BlockedExecutables []string `json:"blocked_executables,omitempty"`
+	}{minutes, s.Paused, s.Mode, s.StopPin, s.BlockedExecutables})
 }
 
 type FamilyPolicy struct {
