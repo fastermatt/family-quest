@@ -173,7 +173,30 @@ func replaceRunningInstance(pidFile string) {
 	syscall.WaitForSingleObject(h, 3000)
 }
 func openDashboard(url string) error {
+	if browser := findAppModeBrowser(); browser != "" {
+		return exec.Command(browser, "--app="+url, "--window-size=440,760", "--no-first-run", "--no-default-browser-check").Start()
+	}
 	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Start()
+}
+
+func findAppModeBrowser() string {
+	pf := os.Getenv("ProgramFiles")
+	pfx86 := os.Getenv("ProgramFiles(x86)")
+	local := os.Getenv("LOCALAPPDATA")
+	candidates := []string{
+		filepath.Join(pfx86, `Microsoft\Edge\Application\msedge.exe`),
+		filepath.Join(pf, `Microsoft\Edge\Application\msedge.exe`),
+		filepath.Join(local, `Microsoft\Edge\Application\msedge.exe`),
+		filepath.Join(pf, `Google\Chrome\Application\chrome.exe`),
+		filepath.Join(pfx86, `Google\Chrome\Application\chrome.exe`),
+		filepath.Join(local, `Google\Chrome\Application\chrome.exe`),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
 }
 func showError(message string) {
 	title, _ := syscall.UTF16PtrFromString("ChoreZap")

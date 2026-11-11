@@ -1,4 +1,4 @@
-# ChoreZap Desktop 0.3.0 — family controls pilot
+# ChoreZap Desktop 0.3.1 — family controls pilot
 
 The installable, per-account Windows app records foreground usage, receives short family game policies, and can close only a currently foreground classified game after a saved 30-second warning when close mode is selected. Family game permission expires locally and remains denied after a restart until a fresh policy is accepted. School and browser apps remain exempt. This is a cooperative app, not a protected service, native content filter, or session lock.
 
@@ -7,6 +7,10 @@ The per-user installer copies the stable launcher and public server bootstrap in
 A countdown result of `requested` is only a durable receipt, not proof that the overlay appeared. A crash after the receipt is saved can skip the display; the parent can send a new test command. Only the native window's visibility signal reports `displayed`.
 
 An older stable launcher needs this package installed once to gain remote activation. The initial installer stops the current app and can lose the last few seconds of unsaved usage. Native Windows installation, process inventory, overlay visibility, remote activation, and rollback still require a real PC pilot test. No live release is implied by a local build.
+
+## 2026-11-10 — Standalone dashboard window 0.3.1 (Claude)
+
+Dashboard tray click now opens in a standalone app-mode window (no browser address bar or tabs) instead of a default browser tab. On Windows 11+ Edge is always present and is preferred; Chrome at standard install paths is the fallback; `rundll32.exe` is the final fallback if neither is found. Window opens at 440×760px. Published sequence 10. No server or DB change.
 
 ## Historical design notes (0.2.x)
 
