@@ -31,6 +31,7 @@ func acquireUpdateStageLock() (func(), error) { updateStageMu.Lock(); return upd
 func classifiedGamesIdle(map[string]bool) (bool, error) {
 	return false, fmt.Errorf("Windows process inventory required")
 }
+func runningClassifiedGame(map[string]bool) (string, uint32) { return "", 0 }
 
 func startTray(context.Context, string) error { return nil }
 func registerAutostart()                      {}

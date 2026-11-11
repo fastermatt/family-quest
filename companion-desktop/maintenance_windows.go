@@ -18,6 +18,54 @@ type processEntry struct {
 	Exe                          [260]uint16
 }
 
+// runningClassifiedGame returns the exe name and PID of a classified game
+// running in the current user's session, or ("", 0) if none is found.
+// Used to override foreground detection for exclusive full-screen DirectX
+// games, which cause GetForegroundWindow to return a background process.
+func runningClassifiedGame(games map[string]bool) (string, uint32) {
+	if len(games) == 0 {
+		return "", 0
+	}
+	mine, err := syscall.GetCurrentProcess()
+	if err != nil {
+		return "", 0
+	}
+	sid, err := processSID(mine)
+	if err != nil {
+		return "", 0
+	}
+	h, _, _ := observationKernel32.NewProc("CreateToolhelp32Snapshot").Call(2, 0)
+	if h == ^uintptr(0) {
+		return "", 0
+	}
+	defer syscall.CloseHandle(syscall.Handle(h))
+	entry := processEntry{Size: uint32(unsafe.Sizeof(processEntry{}))}
+	first, _, _ := observationKernel32.NewProc("Process32FirstW").Call(h, uintptr(unsafe.Pointer(&entry)))
+	if first == 0 {
+		return "", 0
+	}
+	for {
+		name := strings.ToLower(syscall.UTF16ToString(entry.Exe[:]))
+		if games[name] {
+			process, openErr := syscall.OpenProcess(0x1000, false, entry.PID)
+			if openErr == nil {
+				owner, ownerErr := processSID(process)
+				syscall.CloseHandle(process)
+				if ownerErr == nil && owner == sid {
+					return name, entry.PID
+				}
+			}
+		}
+		next, _, nextErr := observationKernel32.NewProc("Process32NextW").Call(h, uintptr(unsafe.Pointer(&entry)))
+		if next == 0 {
+			if nextErr == syscall.Errno(18) {
+				return "", 0
+			}
+			return "", 0
+		}
+	}
+}
+
 // Enumerate all processes, including minimized games. An inaccessible
 // classified process is treated as unsafe rather than assumed absent.
 func classifiedGamesIdle(games map[string]bool) (bool, error) {

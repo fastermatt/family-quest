@@ -172,6 +172,14 @@ func run() error {
 					e.syncFailure(err)
 				}
 				o := foregroundObservation()
+				// If the foreground window belongs to a background process (common
+				// for exclusive full-screen DirectX games), override with any
+				// classified game currently running in this user's session.
+				if o.Available && !games[o.Executable] && len(games) > 0 {
+					if name, pid := runningClassifiedGame(games); name != "" {
+						o = Observation{Executable: name, IdleSeconds: o.IdleSeconds, Available: true, PID: pid}
+					}
+				}
 				o.Hint = detector.lookup(o.Path)
 				now := time.Now().UTC()
 				e.sample(now, o)
