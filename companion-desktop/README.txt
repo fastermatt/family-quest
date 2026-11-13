@@ -1,4 +1,4 @@
-ChoreZap 0.3.8 — Windows PC Companion
+ChoreZap 0.3.9 — Windows PC Companion
 ================================
 
 WHAT THIS IS
@@ -11,6 +11,10 @@ Today's chores refresh when the linked app starts and about every five
 minutes. Use Open ChoreZap to submit work. Windows tray notifications cover
 chore reminders, returned chores, completion, and game-time warnings.
 Windows notification settings can suppress popups.
+
+Saved activity can upload even if the settings request fails. If the tray
+icon cannot start, tracking continues and the local dashboard can still
+open. A verified update saves the current activity batch before restarting.
 
 
 INSTALL (takes about 1 minute)

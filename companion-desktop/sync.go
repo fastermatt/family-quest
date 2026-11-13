@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -172,37 +173,60 @@ func (e *Engine) syncOnce(n *Network) {
 			return
 		}
 	}
-	var policy Policy
-	requestStarted := time.Now()
-	status, err := n.request("/api/companion/v2/state", a.Token, nil, &policy)
-	if err != nil {
-		if status == 401 {
-			e.mu.Lock()
-			e.LastPolicy = time.Time{}
-			e.mu.Unlock()
-		}
+	status, policyErr := e.refreshPolicy(n, a.Token)
+	// Activity has its own server-side device authentication. A settings
+	// outage or a rejected policy cannot strand already-recorded minutes.
+	if policyErr != nil && (unlinked || status == http.StatusUnauthorized || status == http.StatusForbidden) {
+		e.syncFailure(policyErr)
+		return
+	}
+	if policyErr != nil {
+		policyErr = fmt.Errorf("Settings: %w", policyErr)
+	}
+	uploadErr := e.uploadActivity(n, a.Token)
+	if uploadErr != nil {
+		uploadErr = fmt.Errorf("Activity upload: %w", uploadErr)
+	}
+	if err := errors.Join(policyErr, uploadErr); err != nil {
 		e.syncFailure(err)
 		return
 	}
+	e.mu.Lock()
+	e.SyncError = ""
+	if err := e.saveLocked(); err != nil {
+		e.SyncError = err.Error()
+	}
+	e.mu.Unlock()
+}
+
+func (e *Engine) refreshPolicy(n *Network, token string) (int, error) {
+	var policy Policy
+	requestStarted := time.Now()
+	status, err := n.request("/api/companion/v2/state", token, nil, &policy)
+	if err != nil {
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			e.mu.Lock()
+			e.LastPolicy = time.Time{}
+			n.acceptRevision(0, time.Time{})
+			e.mu.Unlock()
+		}
+		return status, err
+	}
 	if policy.Waiting {
-		e.syncFailure(fmt.Errorf("Waiting for a parent to link this PC"))
-		return
+		return status, fmt.Errorf("Waiting for a parent to link this PC")
 	}
 	now := time.Now()
 	if policy.ClientID == "" || (policy.Settings.Mode != "warn" && policy.Settings.Mode != "close") || policy.Day != dayOf(now) {
-		e.syncFailure(fmt.Errorf("invalid or outdated server policy"))
-		return
+		return status, fmt.Errorf("invalid or outdated server policy")
 	}
 	leaseUntil, validationErr := familyLease(policy, now, requestStarted)
 	if validationErr != nil {
-		e.syncFailure(validationErr)
-		return
+		return status, validationErr
 	}
 	e.mu.Lock()
 	if err := e.validateFamilyTransition(policy); err != nil {
 		e.mu.Unlock()
-		e.syncFailure(err)
-		return
+		return status, err
 	}
 	wasUnlinked := e.Ledger.Policy.ClientID == ""
 	e.Ledger.Policy = policy
@@ -213,7 +237,6 @@ func (e *Engine) syncOnce(n *Network) {
 	e.Ledger.PolicyAcceptedAt = now
 	e.Ledger.PolicyRequestStartedAt = requestStarted
 	e.LastPolicy = now
-	e.SyncError = ""
 	if policy.Day == e.Ledger.Day {
 		for _, app := range policy.OwnApps {
 			if app.Seconds > e.Ledger.Totals[app.Executable] {
@@ -230,7 +253,11 @@ func (e *Engine) syncOnce(n *Network) {
 	} else {
 		n.acceptRevision(0, time.Time{})
 	}
-	// At most four queued batches per minute; each batch is immutable and acknowledged separately.
+	return status, nil
+}
+
+func (e *Engine) uploadActivity(n *Network, token string) error {
+	// At most four queued batches per pass; each batch is immutable and acknowledged separately.
 	for i := 0; i < 4; i++ {
 		e.mu.Lock()
 		if len(e.Ledger.Outbox) == 0 {
@@ -241,22 +268,18 @@ func (e *Engine) syncOnce(n *Network) {
 		e.mu.Unlock()
 		// Persist the immutable batch ID before sending: a crash after server
 		// acceptance must retry the same ID, not rebuild an overlapping batch.
-		if err = e.save(); err != nil {
-			e.syncFailure(err)
-			return
+		if err := e.save(); err != nil {
+			return err
 		}
-		status, uploadErr := n.request("/api/companion/v2/activity", a.Token, batch, nil)
-		err = uploadErr
+		status, err := n.request("/api/companion/v2/activity", token, batch, nil)
 		if status == 409 && err != nil && err.Error() == "overlap" {
 			if err = e.archiveOverlap(batch); err != nil {
-				e.syncFailure(err)
-				return
+				return err
 			}
 			continue
 		}
 		if err != nil {
-			e.syncFailure(err)
-			return
+			return err
 		}
 		e.mu.Lock()
 		if len(e.Ledger.Outbox) > 0 && e.Ledger.Outbox[0].ID == batch.ID {
@@ -265,14 +288,11 @@ func (e *Engine) syncOnce(n *Network) {
 		e.LastSync = time.Now()
 		e.Ledger.LastUpload = e.LastSync
 		e.mu.Unlock()
-		if err = e.save(); err != nil {
-			e.syncFailure(err)
-			return
+		if err := e.save(); err != nil {
+			return err
 		}
 	}
-	if err = e.save(); err != nil {
-		e.syncFailure(err)
-	}
+	return nil
 }
 func (e *Engine) syncFailure(err error) { e.mu.Lock(); e.SyncError = err.Error(); e.mu.Unlock() }
 

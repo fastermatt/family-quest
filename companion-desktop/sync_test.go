@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -47,5 +49,62 @@ func TestOverlapArchivedWithoutLosingLaterBatches(t *testing.T) {
 	}
 	if e.LastSync.IsZero() == false {
 		t.Fatal("conflict incorrectly marked uploaded")
+	}
+}
+
+func TestRecordedGameTimeUploadsWhenSettingsFail(t *testing.T) {
+	for _, status := range []int{503, 401} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			e := testEngine(t)
+			e.demo = false
+			e.account.Token = "linked-device"
+			e.Ledger.Policy.ClientID = "linked"
+			e.Ledger.Policy.Settings.Mode = "warn"
+			e.LastPolicy = time.Now().Add(-time.Minute)
+			accepted := e.LastPolicy
+			start := e.Ledger.Last
+			game := Observation{Executable: "cod.exe", Available: true}
+			e.sample(start.Add(2*time.Second), game)
+			e.sample(start.Add(4*time.Second), game)
+			if err := e.checkpointUsage(); err != nil {
+				t.Fatal(err)
+			}
+			queued := e.Ledger.Outbox[0]
+			seen := make(chan Batch, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/companion/v2/state":
+					http.Error(w, "settings unavailable", status)
+				case "/api/companion/v2/activity":
+					var uploaded Batch
+					if err := json.NewDecoder(r.Body).Decode(&uploaded); err != nil {
+						t.Error(err)
+					}
+					seen <- uploaded
+					w.Write([]byte(`{"ok":true}`))
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			e.syncOnce(&Network{bootstrap: Bootstrap{Server: server.URL}, client: server.Client()})
+			if status == 401 {
+				if len(seen) != 0 || len(e.Ledger.Outbox) != 1 || !e.LastPolicy.IsZero() {
+					t.Fatal("revoked link must retain its local batch and clear policy freshness")
+				}
+				return
+			}
+			if len(seen) != 1 {
+				t.Fatal("settings outage stranded a recorded game batch")
+			}
+			got := <-seen
+			if got.ID != queued.ID || len(got.Apps) != 1 || got.Apps[0].Executable != "cod.exe" || got.Apps[0].Seconds != 2 {
+				t.Fatalf("unexpected game batch: %+v", got)
+			}
+			if len(e.Ledger.Outbox) != 0 || e.LastSync.IsZero() || !e.LastPolicy.Equal(accepted) || !strings.Contains(e.SyncError, "Settings:") {
+				t.Fatal("upload acknowledgement must not change the accepted policy or hide its error")
+			}
+		})
 	}
 }

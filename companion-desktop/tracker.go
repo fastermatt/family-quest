@@ -227,6 +227,15 @@ func (e *Engine) chargeableApp(after Observation) string {
 	}
 	return ""
 }
+
+// Close the current batch and persist it before handing off to another process.
+func (e *Engine) checkpointUsage() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.finish(e.Ledger.Last)
+	return e.saveLocked()
+}
+
 func (e *Engine) save() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()

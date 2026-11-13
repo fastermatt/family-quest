@@ -109,7 +109,7 @@ func run() error {
 	defer shutdown()
 	if !*demo {
 		if err = startTray(ctx, address); err != nil {
-			return err
+			fmt.Println("Tray unavailable. Tracking continues:", err)
 		}
 	}
 	fmt.Println("ChoreZap is running. Dashboard:", address)
@@ -195,7 +195,7 @@ func run() error {
 					idle, idleErr = classifiedGamesIdle(games)
 				}
 				if activate && policyFresh && e.remoteActivationAvailable() && idleErr == nil && idle {
-					if err = e.save(); err == nil {
+					if err = e.checkpointUsage(); err == nil {
 						return errRemoteActivation
 					}
 					e.syncFailure(err)
@@ -240,10 +240,7 @@ func run() error {
 		case <-stop:
 			cancel()
 		case <-ctx.Done():
-			e.mu.Lock()
-			e.finish(e.Ledger.Last)
-			e.mu.Unlock()
-			return e.save()
+			return e.checkpointUsage()
 		}
 	}
 }
