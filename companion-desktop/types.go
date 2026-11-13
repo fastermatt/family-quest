@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.3.7"
+const appVersion = "0.3.8"
 
 type Observation struct {
 	Executable     string

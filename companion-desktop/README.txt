@@ -1,4 +1,4 @@
-ChoreZap — Windows PC Companion
+ChoreZap 0.3.8 — Windows PC Companion
 ================================
 
 WHAT THIS IS
@@ -6,6 +6,11 @@ WHAT THIS IS
 ChoreZap tracks game and app time on this Windows account. A parent can
 choose reminder mode or game closing after a save warning. The daily
 allowance and schedules come from app-family-controls.vercel.app.
+
+Today's chores refresh when the linked app starts and about every five
+minutes. Use Open ChoreZap to submit work. Windows tray notifications cover
+chore reminders, returned chores, completion, and game-time warnings.
+Windows notification settings can suppress popups.
 
 
 INSTALL (takes about 1 minute)

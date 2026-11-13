@@ -18,7 +18,7 @@ func unseal(b []byte) ([]byte, error) {
 }
 func openDashboard(string) error          { return nil }
 func showError(s string)                  { fmt.Println(s) }
-func notifyLimit()                        {}
+func showDesktopNotice(string, string)    {}
 func closeObservedGame(Observation) error { return fmt.Errorf("Windows required") }
 
 func startCountdownHUD(context.Context, *Engine) {}

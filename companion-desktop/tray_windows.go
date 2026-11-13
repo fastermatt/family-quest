@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 )
 
@@ -24,6 +26,29 @@ type trayData struct {
 	InfoFlags           uint32
 	GUID                [16]byte
 	BalloonIcon         uintptr
+}
+
+type trayNotice struct{ title, body string }
+
+var trayNotices = make(chan trayNotice, 32)
+
+func showDesktopNotice(title, body string) {
+	select {
+	case trayNotices <- trayNotice{title, body}:
+	default:
+		// Tracking must never wait for Explorer to show a notification.
+	}
+}
+
+func copyNoticeText(dst []uint16, value string) {
+	text := utf16.Encode([]rune(strings.ReplaceAll(value, "\x00", "")))
+	if len(text) >= len(dst) {
+		text = text[:len(dst)-1]
+		if last := text[len(text)-1]; last >= 0xd800 && last <= 0xdbff {
+			text = text[:len(text)-1]
+		}
+	}
+	copy(dst, text)
 }
 
 // Visible notification-area presence, never hidden from Windows task management.
@@ -67,6 +92,12 @@ func startTray(ctx context.Context, address string) error {
 				case <-ctx.Done():
 					notify.Call(2, uintptr(unsafe.Pointer(&data)))
 					observationUser32.NewProc("DestroyWindow").Call(window)
+				case notice := <-trayNotices:
+					// Modify only the notification fields on the existing tray icon.
+					balloon := trayData{Size: data.Size, Window: window, ID: data.ID, Flags: 0x10, InfoFlags: 0x81}
+					copyNoticeText(balloon.InfoTitle[:], notice.title)
+					copyNoticeText(balloon.Info[:], notice.body)
+					notify.Call(1, uintptr(unsafe.Pointer(&balloon)))
 				default:
 				}
 				return 0

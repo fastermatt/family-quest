@@ -15,6 +15,8 @@ import (
 )
 
 type Ledger struct {
+	NoticeDay              string              `json:"noticeDay,omitempty"`
+	NoticeKeys             map[string]bool     `json:"noticeKeys,omitempty"`
 	SyncConflicts          int                 `json:"syncConflicts"`
 	AwarenessDay           string              `json:"awarenessDay"`
 	AwarenessMilestone     int                 `json:"awarenessMilestone"`
@@ -37,6 +39,9 @@ type Ledger struct {
 	FamilyCloseDay         string              `json:"familyCloseDay,omitempty"`
 }
 type Engine struct {
+	chores              *ChoresSummary
+	choresETag          string
+	choresAvailable     bool
 	seenGames           map[uint32]string
 	launchUntil         time.Time
 	launchGame          string
@@ -337,6 +342,13 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 	}
 	remaining, limited := e.remainingAt(o.Executable, now)
 	family, familyAllowed, familyReason := e.familyState(now)
+	if o.Available && !o.BackgroundGame && limited && !e.LastPolicy.IsZero() &&
+		!now.Before(e.LastPolicy) && now.Sub(e.LastPolicy) <= 4*time.Hour &&
+		!e.Ledger.Policy.Settings.Paused && (!family || familyAllowed) {
+		if notice := gameTimeNotice(remaining); notice.key != "" {
+			e.sendNotices(dayOf(now), notice)
+		}
+	}
 	if family && familyAllowed && limited && remaining <= 0 {
 		familyReason = "Game time on this PC is used up."
 	}

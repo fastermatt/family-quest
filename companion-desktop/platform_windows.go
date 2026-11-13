@@ -9,13 +9,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
 
 var crypt32 = syscall.NewLazyDLL("crypt32.dll")
-var notificationActive atomic.Bool
 
 func acquireInstance() (func(), error)        { return acquireNamedInstance("Desktop") }
 func acquireUpdaterInstance() (func(), error) { return acquireNamedInstance("Updater") }
@@ -185,15 +183,6 @@ func showError(message string) {
 	title, _ := syscall.UTF16PtrFromString("ChoreZap")
 	body, _ := syscall.UTF16PtrFromString(message)
 	observationUser32.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), 0x10)
-}
-func notifyLimit() {
-	if !notificationActive.CompareAndSwap(false, true) {
-		return
-	}
-	defer notificationActive.Store(false)
-	title, _ := syscall.UTF16PtrFromString("ChoreZap · Game time")
-	body, _ := syscall.UTF16PtrFromString("Your game allowance is up. Check ChoreZap for the current rule. If your parent selected closing games, save now: the game closes after a 30-second warning.")
-	observationUser32.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), 0x40030)
 }
 func closeObservedGame(o Observation) error {
 	if protected[o.Executable] || o.PID == 0 {

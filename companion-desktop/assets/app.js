@@ -1,6 +1,31 @@
 const el=id=>document.getElementById(id);
 const duration=sec=>{sec=Math.max(0,Math.floor(sec||0));return sec>=3600?`${Math.floor(sec/3600)}h ${Math.floor(sec%3600/60)}m`:sec>=60?`${Math.floor(sec/60)}m ${sec%60}s`:`${sec}s`};
+function renderChores(summary) {
+ const panel = el('chores-panel');
+ panel.hidden = !summary;
+ if (!summary) {
+  el('chores-status').textContent = '';
+  el('chores-list').replaceChildren();
+  return;
+ }
+ const labels = {pending:'To do',missed:'Missed',rejected:'Fix this',redo:'Fix this',submitted:'Sent for review',approved:'Approved',excused:'Excused'};
+ el('chores-status').textContent = summary.totalRequired
+  ? `${summary.pendingCount} to do · ${summary.submittedCount} sent · ${summary.approvedCount} approved or excused${summary.allDone ? ' · Required chores complete' : ''}`
+  : 'No required chores listed today.';
+ const rows = summary.chores.map(chore => {
+  const row = document.createElement('li');
+  const name = document.createElement('span');
+  const status = document.createElement('small');
+  name.textContent = chore.name;
+  status.textContent = labels[chore.status] || 'To do';
+  row.append(name, status);
+  return row;
+ });
+ el('chores-list').replaceChildren(...rows);
+}
+
 function render(s){
+ renderChores(s.chores);
  renderCountdown(s.countdown);el('update').textContent=s.updateStatus||'Automatic updates · checks while running, applies when games are closed and policy is fresh';
  el('status').textContent=s.demo?'SAMPLE DATA · No collection or uploads':s.linked?(s.syncError?'Sync needs attention: '+s.syncError:'Linked · Tracking this Windows account'):(s.syncError||'Waiting for a parent to link this PC');
  el('enroll').hidden=s.linked||s.demo;el('linked-welcome').hidden=!s.linked||s.demo;
@@ -18,7 +43,7 @@ function render(s){
  }
  if(!s.apps.length){const p=document.createElement('p');p.textContent='No application time recorded yet. Use a game or browser for a few seconds.';list.append(p)}
  const uploaded=String(s.lastUpload||'').startsWith('0001')?'No activity uploaded yet':new Date(s.lastUpload).toLocaleTimeString();el('sync').textContent=`${uploaded} · ${s.pending} batches waiting · Uploads about every 5 minutes`;
- el('coverage').textContent=`Unobserved / transitions: ${duration(s.gaps)}. Browsing history, YouTube titles and automatic updates are not included yet.`;
+ el('coverage').textContent=`Unobserved / transitions: ${duration(s.gaps)}. Browser visit history is available for supported profiles on the parent dashboard.`;
  if(s.syncConflicts)el('coverage').textContent+=' '+s.syncConflicts+' overlapping batches preserved locally for review; some time may be absent from server totals.';
  el('mode').textContent=s.settings.mode==='close'?'Parent selected game closing after a 30-second warning. Requires a fresh synced policy; Windows enforcement must be tested.':'Limits currently show reminders only. Closing games is off.';
  el('exit').dataset.pinRequired=s.settings.stop_pin_required?'1':'';

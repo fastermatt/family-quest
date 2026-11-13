@@ -37,6 +37,11 @@ func newNetwork(b Bootstrap) (*Network, error) {
 	return &Network{bootstrap: b, client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 func (n *Network) request(path, token string, body, out any) (int, error) {
+	return n.requestWithETag(path, token, body, out, nil)
+}
+
+// tag is used only for optional conditional reads. Update it after a valid response.
+func (n *Network) requestWithETag(path, token string, body, out any, tag *string) (int, error) {
 	method := "GET"
 	var raw []byte
 	var err error
@@ -61,11 +66,17 @@ func (n *Network) request(path, token string, body, out any) (int, error) {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if tag != nil && *tag != "" {
+		req.Header.Set("If-None-Match", *tag)
+	}
 	res, err := n.client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("server unavailable or certificate mismatch")
 	}
 	defer res.Body.Close()
+	if tag != nil && *tag != "" && res.StatusCode == http.StatusNotModified {
+		return res.StatusCode, nil
+	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
 	if err != nil {
 		return res.StatusCode, err
@@ -92,6 +103,9 @@ func (n *Network) request(path, token string, body, out any) (int, error) {
 		if err = json.Unmarshal(data, &ack); err == nil && !ack.OK {
 			err = fmt.Errorf("server did not acknowledge upload")
 		}
+	}
+	if tag != nil && err == nil {
+		*tag = res.Header.Get("ETag")
 	}
 	return res.StatusCode, err
 }

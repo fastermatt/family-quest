@@ -116,9 +116,13 @@ func run() error {
 	if err = openDashboard(address); err != nil {
 		fmt.Println("Open the dashboard address in your browser.")
 	}
+	initialSync := make(chan struct{})
 	go func() {
 		if !*demo {
 			e.syncOnce(network)
+		}
+		close(initialSync)
+		if !*demo {
 			e.maintenanceOnce(network)
 			go e.browseOnce(network)
 		}
@@ -147,6 +151,27 @@ func run() error {
 			}
 		}
 	}()
+	if !*demo {
+		go func() {
+			// Let the first policy sync establish the device link.
+			select {
+			case <-ctx.Done():
+				return
+			case <-initialSync:
+				e.choresFetch(network)
+			}
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					e.choresFetch(network)
+				}
+			}
+		}()
+	}
 	detector := gameDetector{}
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()

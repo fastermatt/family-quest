@@ -121,3 +121,44 @@ test('device stop derives identity, rejects offline/unlinked/invalid and require
  assert.equal((await presenceFailure.text()).includes('internal secret'),false)
  assert.deepEqual(allowedButUnrecorded.calls.map(c=>c.name),['companion_verify_stop','companion_presence_stop'])
 })
+
+test('desktop chores authenticate before querying or returning a matching ETag', async () => {
+ const filters: [string,string,unknown][] = []
+ const admin = { from(table:string) {
+  const data = table === 'task_instances'
+   ? [{id:'chore',status:'submitted',template:{name:'Kitchen',required:true,proof_type:'photo',xp_value:100}}]
+   : table === 'profiles' ? {name:'Child'} : {enabled:true,require_parent_approval:true}
+  const q = {
+   select: () => q,
+   eq: (field:string,value:unknown) => {filters.push([table,field,value]);return q},
+   order: () => q,
+   limit: async () => ({data,error:null}),
+   single: async () => ({data,error:null}),
+   maybeSingle: async () => ({data,error:null}),
+  }
+  return q
+ }}
+ const {GET} = load('src/app/api/companion/v2/chores/route.ts',{
+  '@/lib/session':{adminClient:()=>admin},
+  '@/lib/companion/desktop-server':{
+   desktopIdentity:async (r:Request)=>r.headers.get('authorization')==='Bearer test-device'?{child_id:C,family_id:F}:null,
+   desktopError:(error:string,status:number)=>Response.json({error},{status}),
+  },
+ })
+ const url = 'https://family.example/api/companion/v2/chores?childId=other'
+ assert.equal((await GET(new Request(url,{headers:{'If-None-Match':'*'}}))).status,401)
+ assert.equal(filters.length,0)
+ const auth = {Authorization:'Bearer test-device'}
+ const first = await GET(new Request(url,{headers:auth}))
+ assert.equal(first.status,200)
+ assert(filters.some(([table,field,value])=>table==='task_instances'&&field==='assigned_to'&&value===C))
+ assert(filters.some(([table,field,value])=>table==='task_instances'&&field==='template.family_id'&&value===F))
+ const body = await first.json()
+ assert.equal(body.chores[0].name,'Kitchen')
+ assert.equal(body.allDone,false)
+ const tag = first.headers.get('etag')
+ assert(tag)
+ const second = await GET(new Request(url,{headers:{...auth,'If-None-Match':tag}}))
+ assert.equal(second.status,304)
+ assert.equal(await second.text(),'')
+})

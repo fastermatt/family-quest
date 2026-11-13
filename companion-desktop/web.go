@@ -41,7 +41,11 @@ func (e *Engine) view() any {
 	if e.Ledger.Policy.ClientID != "" {
 		pin = ""
 	}
-	return map[string]any{"syncConflicts": e.Ledger.SyncConflicts, "updateStatus": string(update), "countdown": e.countdown(time.Now()), "version": appVersion, "demo": e.demo, "childName": e.Ledger.Policy.ChildName, "linked": e.Ledger.Policy.ClientID != "", "claim": strings.Join(parts, "-"), "pin": pin, "day": e.Ledger.Day, "apps": apps, "groups": groups, "gaps": e.Ledger.Gaps, "current": e.Current, "backgroundGame": e.before.BackgroundGame, "lastUpload": e.LastSync, "lastPolicy": e.LastPolicy, "pending": len(e.Ledger.Outbox), "syncError": e.SyncError, "action": e.Action, "settings": e.Ledger.Policy.Settings, "familyEnabled": familyEnabled, "familyAllowed": familyAllowed, "familyReason": familyReason, "launcherVersion": e.reportedLauncherVersion(), "remoteActivationAvailable": e.remoteActivationAvailable()}
+	var chores *ChoresSummary
+	if e.choresAvailable && e.chores != nil && e.chores.Day == dayOf(time.Now()) {
+		chores = e.chores
+	}
+	return map[string]any{"chores": chores, "syncConflicts": e.Ledger.SyncConflicts, "updateStatus": string(update), "countdown": e.countdown(time.Now()), "version": appVersion, "demo": e.demo, "childName": e.Ledger.Policy.ChildName, "linked": e.Ledger.Policy.ClientID != "", "claim": strings.Join(parts, "-"), "pin": pin, "day": e.Ledger.Day, "apps": apps, "groups": groups, "gaps": e.Ledger.Gaps, "current": e.Current, "backgroundGame": e.before.BackgroundGame, "lastUpload": e.LastSync, "lastPolicy": e.LastPolicy, "pending": len(e.Ledger.Outbox), "syncError": e.SyncError, "action": e.Action, "settings": e.Ledger.Policy.Settings, "familyEnabled": familyEnabled, "familyAllowed": familyAllowed, "familyReason": familyReason, "launcherVersion": e.reportedLauncherVersion(), "remoteActivationAvailable": e.remoteActivationAvailable()}
 }
 func (e *Engine) serve(cancel context.CancelFunc) (string, func(), error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
