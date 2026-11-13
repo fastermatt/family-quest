@@ -133,3 +133,7 @@ func gameTimeNotice(remaining float64) desktopNotice {
 		return desktopNotice{}
 	}
 }
+
+func closingNotice(deadline time.Time, reason string) desktopNotice {
+	return desktopNotice{fmt.Sprintf("game-closing:%d", deadline.Unix()), "ChoreZap · Save your game", "Game closes in 30 seconds. " + reason}
+}

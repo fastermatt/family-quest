@@ -353,7 +353,8 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 	family, familyAllowed, familyReason := e.familyState(now)
 	if o.Available && !o.BackgroundGame && limited && !e.LastPolicy.IsZero() &&
 		!now.Before(e.LastPolicy) && now.Sub(e.LastPolicy) <= 4*time.Hour &&
-		!e.Ledger.Policy.Settings.Paused && (!family || familyAllowed) {
+		!e.Ledger.Policy.Settings.Paused && (!family || familyAllowed) &&
+		(remaining > 0 || e.Ledger.Policy.Settings.Mode != "close") {
 		if notice := gameTimeNotice(remaining); notice.key != "" {
 			e.sendNotices(dayOf(now), notice)
 		}
@@ -393,6 +394,7 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 		deadline = now.Add(30 * time.Second)
 		e.deadlines[o.Executable] = deadline
 		e.Action = "Game time is up. This game will close in 30 seconds."
+		e.sendNotices(dayOf(now), closingNotice(deadline, "Game time is up or paused."))
 		e.mu.Unlock()
 		return
 	}
@@ -452,6 +454,8 @@ func (e *Engine) enforceFamily(o Observation, now time.Time, limited bool, remai
 		if err := e.saveLocked(); err != nil {
 			e.SyncError = err.Error()
 			e.Ledger.FamilyCloseDeadline = now // Do not renew an unpersisted grace.
+		} else {
+			e.sendNotices(dayOf(now), closingNotice(e.Ledger.FamilyCloseDeadline, reason))
 		}
 	}
 	if now.Before(e.Ledger.FamilyCloseDeadline) {

@@ -108,3 +108,36 @@ func TestRecordedGameTimeUploadsWhenSettingsFail(t *testing.T) {
 		})
 	}
 }
+
+func TestLegacyPolicyAcknowledgesAppliedLimitAndPause(t *testing.T) {
+	e := testEngine(t)
+	e.Ledger.Policy.ClientID = "pc"
+	var received []string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = append(received, r.Header.Get("X-ChoreZap-Policy-Revision"))
+		now := time.Now()
+		day := dayOf(now)
+		cap := 30
+		p := Policy{
+			ClientID: "pc", Day: day, ServerTime: now.Format(time.RFC3339),
+			Settings:     Settings{GamingMinutes: &cap, Paused: true, Mode: "close"},
+			FamilyPolicy: &FamilyPolicy{Revision: 3, Day: day, Timezone: "America/Denver"},
+		}
+		if err := json.NewEncoder(w).Encode(p); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer s.Close()
+	n := &Network{bootstrap: Bootstrap{Server: s.URL}, client: s.Client()}
+	for range 2 {
+		if _, err := e.refreshPolicy(n, "linked"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(received) != 2 || received[0] != "" || received[1] != "3" {
+		t.Fatalf("unexpected receipt headers %q", received)
+	}
+	if p := e.Ledger.Policy; !p.Settings.Paused || *p.Settings.GamingMinutes != 30 || p.FamilyPolicy.Enabled {
+		t.Fatalf("legacy controls were not applied: %+v", p)
+	}
+}

@@ -36,7 +36,7 @@ export async function desktopSnapshot(client:{id:string;family_id:string;child_i
   const enabled = family.settings.enabled
   return {clientId:client.id,childName:profile.data.name,serverTime:new Date().toISOString(),day,
     rules:effectiveGameRules(aggregateApps(batches.data??[]),rules.data??[]),
-    settings:enabled?{...baseSettings,gaming_minutes:family.game.grantedSeconds/60,paused:baseSettings.paused||!family.game.allowed}:baseSettings,
+    settings:{...baseSettings,gaming_minutes:family.game.budgetSeconds===undefined?baseSettings.gaming_minutes:family.game.budgetSeconds===null?null:family.game.budgetSeconds/60,mode:family.game.mode??baseSettings.mode,paused:family.game.paused||(enabled&&!family.game.allowed)},
     otherApps:aggregateApps((batches.data??[]).filter(b=>b.client_id!==client.id)),ownApps:aggregateApps((batches.data??[]).filter(b=>b.client_id===client.id)),
     policyLeaseSeconds:enabled?900:14400,
     familyPolicy:{enabled,revision:family.settings.revision,day:family.day,timezone:family.settings.timezone,eligible:family.game.eligible,allowed:family.game.allowed,reason:family.game.reason,expiresAt:family.game.nextChangeAt},

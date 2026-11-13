@@ -248,7 +248,12 @@ func (e *Engine) refreshPolicy(n *Network, token string) (int, error) {
 	if wasUnlinked {
 		registerAutostart()
 	}
-	if policy.FamilyPolicy != nil && policy.FamilyPolicy.Enabled {
+	if policy.FamilyPolicy != nil {
+		if !policy.FamilyPolicy.Enabled {
+			// Acknowledge receipt of legacy limits as well. This deadline is
+			// only for the receipt header and does not grant game access.
+			leaseUntil = now.Add(2 * time.Minute)
+		}
 		n.acceptRevision(policy.FamilyPolicy.Revision, leaseUntil)
 	} else {
 		n.acceptRevision(0, time.Time{})

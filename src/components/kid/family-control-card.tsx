@@ -54,7 +54,7 @@ function GameTimeCard({ overview: o }: { overview: FamilyOverview }) {
       <div className="px-5 pb-2 pt-5">
         <p className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-3)' }}>Time left at last PC report</p>
         <p className="mt-1 text-[52px] font-black leading-none tabular-nums" style={{ color: statusColor }}>{duration(g.remainingSeconds)}</p>
-        <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-2)' }}>of {duration(g.grantedSeconds)} earned today{g.extraGrantSeconds > 0 ? ` (includes ${duration(g.extraGrantSeconds)} bonus)` : ''}</p>
+        <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-2)' }}>of {duration(g.budgetSeconds ?? g.grantedSeconds)} available today{g.extraGrantSeconds > 0 && g.todayCapMinutes == null ? ` (includes ${duration(g.extraGrantSeconds)} bonus)` : ''}</p>
         <p className="mt-2 text-[12px]" style={{ color: 'var(--ink-3)' }}>Family plan: {o.settings.weekday_minutes} min weekdays · {o.settings.weekend_minutes} min weekends · {o.settings.bathroom_bonus_minutes} min bathroom bonus once per weekend after parent confirmation.</p>
       </div>
 
@@ -75,7 +75,7 @@ function GameTimeCard({ overview: o }: { overview: FamilyOverview }) {
       {/* Progress bar */}
       {g.grantedSeconds > 0 && (
         <div className="mx-5 mb-4 mt-2 h-2 overflow-hidden rounded-full" style={{ background: 'var(--divider)' }}>
-          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (g.remainingSeconds / g.grantedSeconds) * 100)}%`, background: statusColor }} />
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (g.remainingSeconds / Math.max(1, g.budgetSeconds ?? g.grantedSeconds)) * 100)}%`, background: statusColor }} />
         </div>
       )}
 

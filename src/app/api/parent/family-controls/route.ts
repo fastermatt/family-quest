@@ -28,7 +28,15 @@ export async function POST(req:NextRequest) {
   if(b.action==='settings')result=await admin.rpc('family_save_settings',{...scope,p_settings:cleanSettings(b.settings)})
   else if(b.action==='bathroom-bonus')result=await admin.rpc('family_bathroom_bonus',{...scope,p_note:text(b.note,500,'confirmation of the completed bathroom clean')})
   else if(b.action==='extra-grant')result=await admin.rpc('family_extra_grant',{...scope,p_minutes:integer(b.minutes,0,240,'Extra minutes'),p_note:typeof b.minutes==='number'&&b.minutes>0?text(b.note,200,'a reason for the extra time'):'',})
+  else if(b.action==='set-day-cap') {
+   if(typeof b.day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(b.day)) throw new Error('Refresh today’s game time before saving.')
+   result=await admin.rpc('family_set_day_cap',{...scope,p_minutes:b.minutes===null?null:integer(b.minutes,0,1440,'Today’s limit'),p_day:b.day,p_revision:integer(b.revision,0,2147483646,'Rule revision')})
+  }
   else if(b.action==='set-paused'){if(typeof b.paused!=='boolean')throw new Error('Invalid pause value.');result=await admin.rpc('family_set_paused',{...scope,p_paused:b.paused})}
+  else if(b.action==='set-game-mode') {
+   if(b.mode!=='warn'&&b.mode!=='close')throw new Error('Choose game closing or reminders.')
+   result=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:scope.p_child,mode:b.mode},{onConflict:'family_id,child_id'})
+  }
   else if(b.action==='add-incident')result=await admin.rpc('family_add_incident',{...scope,p_kind:text(b.kind,30,'incident kind'),p_note:text(b.note,500,'what happened'),p_consequence:b.consequence==='none'?'none':'block_games'})
   else if(b.action==='resolve-incident'){if(!UUID.test(String(b.incidentId)))throw new Error('Invalid incident.');result=await admin.rpc('family_resolve_incident',{...scope,p_id:String(b.incidentId),p_note:text(b.note,500,'resolution note')})}
   else result=await admin.rpc('family_money_action',{...scope,p_action:String(b.action),p_body:cleanMoneyAction(b)})

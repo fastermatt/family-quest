@@ -33,7 +33,7 @@ export interface FamilyIncident {
 }
 export interface FamilyOverview {
   childId: string; childName: string; day: string; settings: FamilySettings
-  game: {eligible: boolean; requiredCount: number; remainingTasks: number; grantedSeconds: number; extraGrantSeconds: number; usedSeconds: number; remainingSeconds: number; allowed: boolean; paused: boolean; reason: string; bathroomGranted: boolean; nextChangeAt: string}
+  game: {budgetSeconds?: number|null; lastActivityAt?: string|null; todayCapMinutes?: number|null; mode?: 'warn'|'close'; eligible: boolean; requiredCount: number; remainingTasks: number; grantedSeconds: number; extraGrantSeconds: number; usedSeconds: number; remainingSeconds: number; allowed: boolean; paused: boolean; reason: string; bathroomGranted: boolean; nextChangeAt: string}
   money: {initialized: boolean; debtRemainingCents: number; cashOwedCents: number; entries: MoneyEntry[]}
   jobs: JobOffer[]
   incidents: FamilyIncident[]

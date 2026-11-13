@@ -239,3 +239,25 @@ func TestPolicyHeadersOnlyAcknowledgeAcceptedLease(t *testing.T) {
 		t.Fatal(revision, err)
 	}
 }
+
+func TestClosureWarningFollowsFamilyOrLegacyPause(t *testing.T) {
+	for _, family := range []bool{false, true} {
+		e, now := familyEngine(t, false)
+		e.demo = false
+		if !family {
+			e.Ledger.Policy.FamilyPolicy = nil
+			e.Ledger.Policy.Settings.Paused = true
+		}
+		observation := Observation{Executable: "game.exe", Available: true}
+		e.before, e.Current = observation, observation.Executable
+		e.enforce(observation, now)
+		countdown := e.countdown(now)
+		if countdown.Phase != "closing" || countdown.Seconds != 30 {
+			t.Fatalf("family=%v: missing save countdown: %+v", family, countdown)
+		}
+		key := closingNotice(now.Add(30*time.Second), "").key
+		if !e.Ledger.NoticeKeys[key] {
+			t.Fatalf("family=%v: no saved desktop warning", family)
+		}
+	}
+}

@@ -27,7 +27,7 @@ export async function GET(req:NextRequest){
  const rawSettings=settings.data
  const baseSettings={gaming_minutes:rawSettings?.gaming_minutes??null,paused:rawSettings?.paused??false,mode:rawSettings?.mode??'warn',blocked_executables:rawSettings?.blocked_executables??[],stop_pin_required:!!rawSettings?.stop_pin_hash}
  const displayApps=apps.map(app=>({...app,category:effective.find(rule=>rule.executable===app.executable)?.category??'other'}))
- return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,settings:family.settings.enabled?{...baseSettings,gaming_minutes:family.game.grantedSeconds/60}:baseSettings,apps:displayApps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay(),browse:browse.error?{entries:[],coverage:{status:'unavailable',browsers:[]}}:{entries:browse.data?.entries??[],coverage:browse.data?.coverage??null}},{headers:{'Cache-Control':'no-store'}})
+ return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,legacyGamingMinutes:baseSettings.gaming_minutes,settings:{...baseSettings,gaming_minutes:family.game.budgetSeconds==null?null:family.game.budgetSeconds/60,paused:family.game.paused,mode:family.game.mode??'warn'},apps:displayApps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay(),browse:browse.error?{entries:[],coverage:{status:'unavailable',browsers:[]}}:{entries:browse.data?.entries??[],coverage:browse.data?.coverage??null}},{headers:{'Cache-Control':'no-store'}})
 }
 export async function POST(req:NextRequest){
  try{

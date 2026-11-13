@@ -1,4 +1,4 @@
-ChoreZap 0.3.9 — Windows PC Companion
+ChoreZap 0.3.10 — Windows PC Companion
 ================================
 
 WHAT THIS IS
@@ -10,7 +10,9 @@ allowance and schedules come from app-family-controls.vercel.app.
 Today's chores refresh when the linked app starts and about every five
 minutes. Use Open ChoreZap to submit work. Windows tray notifications cover
 chore reminders, returned chores, completion, and game-time warnings.
-Windows notification settings can suppress popups.
+Close mode adds a separate 30-second save popup and countdown when a
+foreground game is about to close. Windows notification settings can
+suppress popups, and exclusive fullscreen can hide the countdown.
 
 Saved activity can upload even if the settings request fails. If the tray
 icon cannot start, tracking continues and the local dashboard can still
@@ -34,7 +36,8 @@ INSTALL (takes about 1 minute)
    ChoreZap installs itself automatically to:
        %LOCALAPPDATA%\Programs\ChoreZap\
 
-   A ChoreZap dashboard window opens showing a 4-digit setup code.
+   An existing link and saved activity are reused. If the dashboard
+   says it is linked, skip steps 4 and 5. A new setup shows a 4-digit code.
 
 4. On your phone or another computer, go to:
 

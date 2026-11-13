@@ -36,6 +36,7 @@ async function setup() {
  await db.exec(await readFile(new URL('../supabase/migrations/20261111143718_companion_stop_pin_transition_and_access.sql',import.meta.url),'utf8'))
  await db.exec(await readFile(new URL('../supabase/migrations/20261111151000_companion_presence_monitor.sql',import.meta.url),'utf8'))
  await db.exec(await readFile(new URL('../supabase/migrations/20261111152500_presence_recipient_scope.sql',import.meta.url),'utf8'))
+ await db.exec(await readFile(new URL('../supabase/migrations/20261113212127_family_phone_game_controls.sql',import.meta.url),'utf8'))
  return db
 }
 async function money(db:PGlite,action:string,body:unknown,actor=P,child=C,family=F) { await db.query('select family_money_action($1,$2,$3,$4,$5::jsonb)',[family,child,actor,action,JSON.stringify(body)]) }
@@ -207,6 +208,7 @@ test('presence monitoring arms on a fresh heartbeat, dedupes transitions, honors
   assert.equal((await db.query('select 1 from companion_presence_state where client_id=$1',[other])).rows.length,0)
   assert.equal((await db.query('select 1 from companion_presence_events where client_id=$1',[other])).rows.length,0)
   // The first post-enable heartbeat only arms online tracking.
+  await db.query("update companion_presence_settings set enabled_at=now()-interval '1 second' where child_id=$1",[C])
   await db.query('update companion_clients set last_seen_at=now() where id=$1',[pc])
   await scan()
   assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'online')
@@ -220,6 +222,7 @@ test('presence monitoring arms on a fresh heartbeat, dedupes transitions, honors
   assert.equal((await db.query<{status:string}>('select status from companion_presence_state where client_id=$1',[pc])).rows[0].status,'missing')
 
   // Recovery restores online state exactly once.
+  await db.query("update companion_presence_state set changed_at=now()-interval '1 second' where client_id=$1",[pc])
   await db.query('update companion_clients set last_seen_at=now() where id=$1',[pc])
   await scan();await scan()
   assert.equal(await count('checkin_restored'),1)
@@ -285,4 +288,41 @@ test('stop PIN remains server-only, scoped, throttled across clients and revoked
   await assert.rejects(db.query('select * from companion_stop_attempts'))
   await assert.rejects(db.query('select companion_verify_stop($1,$2)',[second,'']))
  }finally{await db.close()}
+})
+
+
+test('phone cap expires by Denver day, keeps earned minutes, and invalidates old PC receipts', async () => {
+ const db=await setup()
+ try {
+  await settings(db)
+  await db.query("update task_instances set status='approved' where id=$1",[I])
+  const before=await state(db)
+  assert.equal(before.grantedSeconds,7200)
+  const day=(await db.query<{day:string}>("select ((now() at time zone 'America/Denver')::date)::text as day")).rows[0].day
+  const setCap=(minutes:number|null,revision:number,actor=P,date=day)=>db.query('select family_set_day_cap($1,$2,$3,$4,$5,$6)',[F,C,actor,minutes,date,revision])
+  await assert.rejects(setCap(45,1,C))
+  await assert.rejects(setCap(45,1,P,'2000-01-01'))
+  await setCap(45,1)
+  const read=async()=>(await db.query<{s:{todayCapMinutes:number|null;grantedSeconds:number;settings:{revision:number};pcPaused:boolean;pcMode:string}}>('select family_game_state($1,$2) s',[F,C])).rows[0].s
+  const capped=await read()
+  assert.equal(capped.todayCapMinutes,45)
+  assert.equal(capped.grantedSeconds,before.grantedSeconds)
+  assert.equal(capped.settings.revision,2)
+  await assert.rejects(setCap(30,1))
+  await db.query("insert into companion_limits(family_id,child_id,paused,mode) values($1,$2,true,'close')",[F,C])
+  const paused=await read()
+  assert.equal(paused.pcPaused,true)
+  assert.equal(paused.pcMode,'close')
+  assert.equal(paused.settings.revision,3)
+  await db.query('update companion_limits set paused=true where child_id=$1',[C])
+  assert.equal((await read()).settings.revision,3)
+  await setCap(0,3)
+  assert.equal((await read()).todayCapMinutes,0)
+  await db.query('update family_game_day_caps set day=day-1 where child_id=$1',[C])
+  assert.equal((await read()).todayCapMinutes,null)
+  await setCap(null,4)
+  await db.exec('set role authenticated')
+  await assert.rejects(db.query('select * from family_game_day_caps'))
+  await assert.rejects(setCap(45,5))
+ } finally { await db.close() }
 })
