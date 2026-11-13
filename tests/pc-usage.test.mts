@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {summarizePCUsage} from '../src/lib/companion/pc-usage.ts'
+import {pcUsageCoverage,summarizePCUsage} from '../src/lib/companion/pc-usage.ts'
 
 test('parent Today joins foreground apps to effective rules before totaling games', () => {
   // The companion API sends app durations and effective classifications separately.
@@ -24,4 +24,13 @@ test('parent Today joins foreground apps to effective rules before totaling game
     gamingSeconds: 900,
     topGame: { executable: 'modernwarfare.exe', label: 'Modern Warfare', seconds: 900 },
   })
+})
+
+
+test('recent contact does not make old or missing activity current', () => {
+  const now = Date.parse('2026-11-13T20:00:00Z')
+  assert.equal(pcUsageCoverage('2026-11-13T17:18:00Z', '2026-11-13T19:59:00Z', now).current, false)
+  assert.equal(pcUsageCoverage(null, '2026-11-13T19:59:00Z', now).current, false)
+  assert.equal(pcUsageCoverage('2026-11-13T19:55:00Z', '2026-11-13T19:59:00Z', now).current, true)
+  assert.match(pcUsageCoverage('2026-11-13T17:18:00Z', '2026-11-13T19:18:00Z', now).message ?? '', /not checked in/)
 })

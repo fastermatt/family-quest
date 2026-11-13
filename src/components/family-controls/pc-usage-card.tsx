@@ -3,14 +3,14 @@
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Monitor, Wifi, WifiOff } from 'lucide-react'
-import { summarizePCUsage } from '@/lib/companion/pc-usage'
+import { pcUsageCoverage, summarizePCUsage } from '@/lib/companion/pc-usage'
 
 interface App { executable: string; seconds: number }
 interface CompanionState {
   apps: App[]
   rules: { executable: string; label: string; category: string }[]
   settings: { gaming_minutes: number | null; paused: boolean; mode: string }
-  clients: { id: string; name: string; last_seen_at: string }[]
+  clients: { id: string; name: string; last_seen_at: string | null }[]
   lastUpload: string | null
   children: { id: string; name: string }[]
   childId: string
@@ -49,7 +49,9 @@ export function PCUsageCard() {
   const limitMin = data.settings.gaming_minutes
   const limitSec = limitMin !== null ? limitMin * 60 : null
   const pct = limitSec ? Math.min(100, (gamingSec / limitSec) * 100) : null
-  const recentUpload = data.lastUpload ? dataUpdatedAt - new Date(data.lastUpload).getTime() < 5 * 60_000 : false
+  const lastSeen = data.clients.reduce<string | null>((latest, client) =>
+    client.last_seen_at && (!latest || Date.parse(client.last_seen_at) > Date.parse(latest)) ? client.last_seen_at : latest, null)
+  const coverage = pcUsageCoverage(data.lastUpload, lastSeen, dataUpdatedAt)
   const childName = data.children?.find(c => c.id === data.childId)?.name ?? 'Grey'
 
   const barColor =
@@ -64,9 +66,9 @@ export function PCUsageCard() {
         <div className="flex items-center gap-2 flex-wrap">
           <Monitor size={16} className="shrink-0" style={{ color: 'var(--ink-3)' }} aria-hidden />
           <span className="text-[15px] font-semibold">{childName}&apos;s PC</span>
-          <span className="flex items-center gap-1 text-[13px]" style={{ color: recentUpload ? 'var(--ok)' : 'var(--ink-3)' }}>
-            {recentUpload ? <Wifi size={12} aria-hidden /> : <WifiOff size={12} aria-hidden />}
-            {sinceLabel(data.lastUpload, dataUpdatedAt)}
+          <span className="flex items-center gap-1 text-[13px]" style={{ color: coverage.current ? 'var(--ok)' : 'var(--ink-3)' }}>
+            {coverage.current ? <Wifi size={12} aria-hidden /> : <WifiOff size={12} aria-hidden />}
+            {coverage.current ? sinceLabel(data.lastUpload, dataUpdatedAt) : 'Tracking gap'}
           </span>
         </div>
         <Link href="/pc" className="shrink-0 text-[13px]" style={{ color: 'var(--accent)' }}>
@@ -76,15 +78,15 @@ export function PCUsageCard() {
 
       <div>
         <div className="flex justify-between items-baseline mb-1.5">
-          <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Gaming today</span>
+          <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Gaming recorded today</span>
           <span className="tabular-nums font-semibold" style={{ color: barColor }}>
-            {fmt(gamingSec)}
+            {gamingSec > 0 || coverage.current ? fmt(gamingSec) : '—'}
             {limitMin !== null && (
               <span className="font-normal text-[13px]" style={{ color: 'var(--ink-3)' }}> / {limitMin}m</span>
             )}
           </span>
         </div>
-        {limitSec !== null && (
+        {coverage.current && limitSec !== null && (
           <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-2)' }}>
             <div
               className="h-full rounded-full transition-all duration-300"
@@ -97,6 +99,7 @@ export function PCUsageCard() {
         )}
       </div>
 
+      {coverage.message && <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>{coverage.message}</p>}
       {topGame && (
         <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
           Most time: <span style={{ color: 'var(--ink-2)' }}>{topGame.label}</span> ({fmt(topGame.seconds)})
