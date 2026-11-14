@@ -8,6 +8,7 @@ import { ProofIcon, StatusPill, type StatusKey } from './status'
 import { formatClock } from '@/lib/dates'
 import { choresLeft, isCrunchTime } from '@/lib/kid-view'
 import { NotifyToggle } from '@/components/notify-toggle'
+import { PCUsageCard } from '@/components/family-controls/pc-usage-card'
 import { countsTowardUnlock, isPastCutoff, proofTypeOf, type ProofType } from '@/lib/proof'
 
 interface Task {
@@ -206,6 +207,8 @@ export function ParentToday() {
       </header>
 
       <NotifyToggle who="parent" />
+
+      <PCUsageCard />
 
       {error && (
         <div className="row flex items-start gap-2 p-3 text-[15px]" role="alert" style={{ borderColor: 'rgba(251,113,133,0.4)' }}>

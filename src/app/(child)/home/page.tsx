@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { AlarmClock, AlertTriangle, Camera, Check, ChevronDown, ChevronUp, ExternalLink, Flame, Loader2, Lock, LockOpen, MessageSquare, RotateCcw } from 'lucide-react'
 import { FloatChip, IconTile, MuteButton, ParticleBurst, allDoneSeen, markAllDone, useReducedMotion } from '@/components/kid/celebrate'
 import { PointsStrip } from '@/components/kid/points-strip'
+import { PCTimeCard } from '@/components/kid/pc-time-card'
+import { FamilyControlCard } from '@/components/kid/family-control-card'
 import { WeekStrip } from '@/components/kid/week-strip'
 import { NotifyToggle } from '@/components/notify-toggle'
 import { QuestionCard } from '@/components/kid/question-card'
@@ -376,9 +378,12 @@ export default function ChildToday() {
     if (allDoneSeen(data.date)) return
     markAllDone(data.date)
     playChime('all', 0.35) // queued just behind the single chime
-    setUnlockFx(true)
-    setBurst(true)
-    window.setTimeout(() => setBurst(false), 2000)
+    const start = window.setTimeout(() => {
+      setUnlockFx(true)
+      setBurst(true)
+      window.setTimeout(() => setBurst(false), 2000)
+    }, 0)
+    return () => window.clearTimeout(start)
   }, [allDoneNow, data])
 
   const submitChore = (c: Chore, file?: File) => {
@@ -529,7 +534,7 @@ export default function ChildToday() {
                 <Flame className="h-4 w-4" aria-hidden />
                 {me.streak}-day streak
               </span>
-              {!allDone && me.streak >= 3 && <span className="text-[12px] font-medium">Don&rsquo;t break it</span>}
+              {!allDone && me.streak >= 3 && <span className="text-[12px] font-medium">Keep building your routine</span>}
             </p>
           )}
           <MuteButton muted={muted} onToggle={toggleMute} />
@@ -547,7 +552,7 @@ export default function ChildToday() {
             It&rsquo;s after 4. {left} chore{left === 1 ? '' : 's'} still not done.
           </p>
           <p className="mt-1 text-[15px]" style={{ color: 'var(--ink)' }}>
-            Finish {left === 1 ? 'it' : 'them'} now. Rewards stay locked until {left === 1 ? 'it is' : 'they are'} done.
+            Start with the next responsibility. Your earned game time will be ready when the required work is done.
           </p>
           <button type="button" className="btn btn-primary mt-3 w-full" onClick={goToFirstOpen}>
             Show me
@@ -557,6 +562,8 @@ export default function ChildToday() {
 
       <PointsStrip xp={me.xp} waiting={waitingXp} reduced={reduced} />
       <WeekStrip />
+      <FamilyControlCard />
+      <PCTimeCard />
       <NotifyToggle who="kid" />
 
       {prog.total > 0 && (

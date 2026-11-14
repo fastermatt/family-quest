@@ -1,0 +1,164 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
+import pathModule from 'node:path'
+import { createRequire } from 'node:module'
+import ts from 'typescript'
+import { DEFAULT_SETTINGS } from '../src/lib/family-controls/policy.ts'
+const require=createRequire(import.meta.url)
+const F='10000000-0000-4000-8000-000000000001', C='20000000-0000-4000-8000-000000000001', P='30000000-0000-4000-8000-000000000001'
+type Handler=(request:unknown)=>Promise<Response>
+function load(path:string,mocks:Record<string,unknown>):Record<string,Handler> {
+ const source=readFileSync(new URL('../'+path,import.meta.url),'utf8')
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
+ const unit={exports:{}}
+ vm.runInNewContext(code,{module:unit,exports:unit.exports,require:(name:string)=>{if(name in mocks)return mocks[name];if(name.startsWith('@/'))return load('src/'+name.slice(2)+'.ts',mocks);if(name.startsWith('.'))return load(pathModule.join(pathModule.dirname(path),name)+(name.endsWith('.ts')?'':'.ts'),mocks);return require(name)},Response,Request,Headers,URL,Buffer,console},{filename:path})
+ return unit.exports
+}
+function fixture(role:'parent'|'child'|'none'='parent',sameFamily=true,rpcError:unknown=null,rpcData:unknown=null,rpcByName:Record<string,{error:unknown;data:unknown}>={}) {
+ const calls:{name:string;args:Record<string,unknown>}[]=[]
+ const admin={rpc:async(name:string,args:Record<string,unknown>)=>{calls.push({name,args});return rpcByName[name]??{error:rpcError,data:rpcData}}}
+ const me=role==='none'?null:{id:role==='child'?C:P,family_id:F,role}
+ const error=(status:number)=>Response.json({error:'denied'},{status})
+ const mocks={
+  '@/lib/api-auth':{requireParent:async()=>!me?{error:error(401)}:role!=='parent'?{error:error(403)}:{me,admin},childInFamily:async()=>sameFamily},
+  '@/lib/session':{getSessionProfile:async()=>me,adminClient:()=>admin},
+  '@/lib/companion/desktop-server':{desktopError:(message:string,status=400)=>Response.json({error:message},{status}),sameOrigin:(req:{origin:string})=>req.origin==='https://family.example',limitedJson:async(req:{body:unknown})=>req.body,desktopIdentity:async(req:{linked?:boolean})=>req.linked===false?null:{id:'90000000-0000-4000-8000-000000000001'}},
+  '@/lib/family-controls/server':{},
+ }
+ return {calls,stop:load('src/app/api/companion/v2/stop/route.ts',mocks),parent:load('src/app/api/parent/family-controls/route.ts',mocks),child:load('src/app/api/child/family-controls/route.ts',mocks),maintenance:load('src/app/api/parent/companion/commands/route.ts',mocks),device:load('src/app/api/companion/v2/commands/route.ts',mocks)}
+}
+const request=(body:unknown,origin='https://family.example')=>({body,origin})
+test('parent mutations reject signed-out, child, cross-family and cross-origin requests before RPC',async()=>{
+ for(const [role,status] of [['none',401],['child',403]] as const){const x=fixture(role);assert.equal((await x.parent.POST(request({action:'open-iou',childId:C,amountCents:8000,description:'IOU'}))).status,status);assert.equal(x.calls.length,0)}
+ const foreign=fixture('parent',false);assert.equal((await foreign.parent.POST(request({action:'open-iou',childId:C}))).status,404);assert.equal(foreign.calls.length,0)
+ const cross=fixture();assert.equal((await cross.parent.POST(request({childId:C},'https://attacker.example'))).status,403);assert.equal(cross.calls.length,0)
+})
+test('child job actions derive family and identity from session and cannot approve money',async()=>{
+ const x=fixture('child')
+ const jobId='40000000-0000-4000-8000-000000000001'
+ const res=await x.child.POST(request({action:'accept-job',jobId,childId:P,familyId:'other'}))
+ assert.equal(res.status,200)
+ assert.equal(x.calls[0].args.p_child,C);assert.equal(x.calls[0].args.p_family,F);assert.equal(x.calls[0].args.p_actor,C)
+ assert.equal((await x.child.POST(request({action:'review-job',jobId,decision:'approve'}))).status,400)
+ assert.equal(x.calls.length,1)
+ const preview=fixture('parent');assert.equal((await preview.child.POST(request({action:'accept-job',jobId}))).status,403)
+})
+test('validation excludes caller authority fields and stale settings/database errors never report success',async()=>{
+ const x=fixture()
+ assert.equal((await x.parent.POST(request({action:'open-iou',childId:C,amountCents:8000.5,description:'IOU'}))).status,400)
+ assert.equal(x.calls.length,0)
+ const ok=await x.parent.POST(request({action:'open-iou',childId:C,amountCents:8000,description:'IOU',p_actor:C}))
+ assert.equal(ok.status,200);assert.equal(x.calls[0].args.p_actor,P)
+ const conflict=fixture('parent',true,{code:'40001'})
+ const res=await conflict.parent.POST(request({action:'settings',childId:C,settings:{...DEFAULT_SETTINGS}}))
+ assert.equal(res.status,409)
+ const unavailable=fixture('parent',true,{code:'08006',message:'sensitive internal details'})
+ const fail=await unavailable.parent.POST(request({action:'open-iou',childId:C,amountCents:8000,description:'IOU'}))
+ assert.equal(fail.status,503);assert.equal((await fail.text()).includes('sensitive'),false)
+})
+
+
+test('remote maintenance rejects child initiation, unlinked device and arbitrary diagnostic payloads',async()=>{
+ const id='80000000-0000-4000-8000-000000000001'
+ const child=fixture('child')
+ assert.equal((await child.maintenance.POST(request({clientId:id,requestId:id,kind:'diagnostics'}))).status,403)
+ assert.equal(child.calls.length,0)
+ const x=fixture()
+ assert.equal((await x.device.POST({...request({id,status:'completed',result:{version:'0.3.0'}}),linked:false})).status,401)
+ assert.equal((await x.device.POST(request({id,status:'completed',result:{token:'not-allowed'}}))).status,400)
+ assert.equal(x.calls.length,0)
+ assert.equal((await x.device.POST(request({id,status:'completed',result:{version:'0.3.0'},clientId:'forged'}))).status,200)
+ assert.equal(x.calls[0].args.p_client,'90000000-0000-4000-8000-000000000001')
+ assert.equal(x.calls[0].name,'companion_finish_command')
+})
+test('parent queues maintenance commands with correct scope and all four kinds accepted',async()=>{
+ const clientId='80000000-0000-4000-8000-000000000001'
+ const requestId='70000000-0000-4000-8000-000000000001'
+ // happy path: parent queues each valid kind
+ for(const kind of ['diagnostics','check-update','apply-update','test-countdown']){
+  const x=fixture()
+  const res=await x.maintenance.POST(request({clientId,requestId,kind}))
+  assert.equal(res.status,200,`kind=${kind} should succeed`)
+  assert.equal(x.calls.length,1)
+  assert.equal(x.calls[0].name,'companion_queue_command')
+  assert.equal(x.calls[0].args.p_kind,kind)
+  assert.equal(x.calls[0].args.p_client,clientId)
+  assert.equal(x.calls[0].args.p_family,F)
+  assert.equal(x.calls[0].args.p_actor,P)
+ }
+ // invalid kind rejected before any RPC call
+ const bad=fixture()
+ assert.equal((await bad.maintenance.POST(request({clientId,requestId,kind:'rm-rf'}))).status,400)
+ assert.equal(bad.calls.length,0)
+ // malformed UUIDs rejected before any RPC call
+ const badId=fixture()
+ assert.equal((await badId.maintenance.POST(request({clientId:'not-a-uuid',requestId,kind:'diagnostics'}))).status,400)
+ assert.equal(badId.calls.length,0)
+})
+
+
+test('device stop derives identity, rejects offline/unlinked/invalid and requires server authorization',async()=>{
+ const linked=fixture('parent',true,null,'allowed')
+ assert.equal((await linked.stop.POST({...request({pin:''}),linked:false})).status,401)
+ assert.equal((await linked.stop.POST(request({pin:'12345'}))).status,400)
+ assert.equal(linked.calls.length,0)
+ assert.equal((await linked.stop.POST(request({pin:'1234',clientId:'forged'}))).status,200)
+ assert.equal(linked.calls[0].args.p_client,'90000000-0000-4000-8000-000000000001')
+ assert.equal(linked.calls[0].name,'companion_verify_stop')
+ for(const [value,status] of [['wrong_pin',403],['throttled',429],['unknown',503]] as const){
+  assert.equal((await fixture('parent',true,null,value).stop.POST(request({pin:'1234'}))).status,status)
+ }
+ const failed=await fixture('parent',true,{message:'internal secret'},null).stop.POST(request({pin:'1234'}))
+ assert.equal(failed.status,503);assert.equal((await failed.text()).includes('internal secret'),false)
+ const allowedButUnrecorded=fixture('parent',true,null,null,{
+  companion_verify_stop:{error:null,data:'allowed'},
+  companion_presence_stop:{error:{message:'internal secret'},data:null},
+ })
+ const presenceFailure=await allowedButUnrecorded.stop.POST(request({pin:'1234'}))
+ assert.equal(presenceFailure.status,503)
+ assert.equal((await presenceFailure.text()).includes('internal secret'),false)
+ assert.deepEqual(allowedButUnrecorded.calls.map(c=>c.name),['companion_verify_stop','companion_presence_stop'])
+})
+
+test('desktop chores authenticate before querying or returning a matching ETag', async () => {
+ const filters: [string,string,unknown][] = []
+ const admin = { from(table:string) {
+  const data = table === 'task_instances'
+   ? [{id:'chore',status:'submitted',template:{name:'Kitchen',required:true,proof_type:'photo',xp_value:100}}]
+   : table === 'profiles' ? {name:'Child'} : {enabled:true,require_parent_approval:true}
+  const q = {
+   select: () => q,
+   eq: (field:string,value:unknown) => {filters.push([table,field,value]);return q},
+   order: () => q,
+   limit: async () => ({data,error:null}),
+   single: async () => ({data,error:null}),
+   maybeSingle: async () => ({data,error:null}),
+  }
+  return q
+ }}
+ const {GET} = load('src/app/api/companion/v2/chores/route.ts',{
+  '@/lib/session':{adminClient:()=>admin},
+  '@/lib/companion/desktop-server':{
+   desktopIdentity:async (r:Request)=>r.headers.get('authorization')==='Bearer test-device'?{child_id:C,family_id:F}:null,
+   desktopError:(error:string,status:number)=>Response.json({error},{status}),
+  },
+ })
+ const url = 'https://family.example/api/companion/v2/chores?childId=other'
+ assert.equal((await GET(new Request(url,{headers:{'If-None-Match':'*'}}))).status,401)
+ assert.equal(filters.length,0)
+ const auth = {Authorization:'Bearer test-device'}
+ const first = await GET(new Request(url,{headers:auth}))
+ assert.equal(first.status,200)
+ assert(filters.some(([table,field,value])=>table==='task_instances'&&field==='assigned_to'&&value===C))
+ assert(filters.some(([table,field,value])=>table==='task_instances'&&field==='template.family_id'&&value===F))
+ const body = await first.json()
+ assert.equal(body.chores[0].name,'Kitchen')
+ assert.equal(body.allDone,false)
+ const tag = first.headers.get('etag')
+ assert(tag)
+ const second = await GET(new Request(url,{headers:{...auth,'If-None-Match':tag}}))
+ assert.equal(second.status,304)
+ assert.equal(await second.text(),'')
+})

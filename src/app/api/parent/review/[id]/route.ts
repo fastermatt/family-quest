@@ -51,22 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (action !== 'approve') return bad('Unknown action.')
 
-  const tpl = Array.isArray(task.task_template) ? task.task_template[0] : task.task_template
-  const xp = tpl?.xp_value ?? 100
-
-  // Only approve something still waiting, so a double tap cannot pay twice.
-  const { data: approved, error } = await admin
-    .from('task_instances')
-    .update({ status: 'approved', reviewed_at: new Date().toISOString(), xp_awarded: xp, review_note: note || null })
-    .eq('id', id)
-    .eq('status', 'submitted')
-    .select('id')
-  if (error) return bad(error.message, 500)
-  if (!approved?.length) return bad('Already reviewed.', 409)
-
-  // Atomic increment; the streak is settled each morning from the day's results.
-  const { error: xpErr } = await admin.rpc('award_xp', { p_child: child.id, p_family: me.family_id, p_xp: xp })
-  if (xpErr) console.error('award_xp failed:', xpErr.message)
-
-  return NextResponse.json({ ok: true, status: 'approved', xp })
+  const { data: receipt, error } = await admin.rpc('family_approve_task', {
+    p_family: me.family_id, p_actor: me.id, p_task: id, p_note: note,
+  })
+  if (error) return bad(error.code === '40001' ? 'Already reviewed.' : 'Could not approve the chore. Please retry.', error.code === '40001' ? 409 : 503)
+  return NextResponse.json({ ok: true, status: 'approved', xp: receipt.xp, duplicate: receipt.duplicate })
 }

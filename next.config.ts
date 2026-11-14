@@ -1,12 +1,5 @@
 import type { NextConfig } from 'next'
 
-const withPWA = require('next-pwa')({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  disable: true // Preserve the hand-authored push/notification-click service worker.,
-})
-
 const nextConfig: NextConfig = {
   turbopack: {},
   images: {
@@ -19,4 +12,4 @@ const nextConfig: NextConfig = {
   },
 }
 
-module.exports = withPWA(nextConfig)
+export default nextConfig

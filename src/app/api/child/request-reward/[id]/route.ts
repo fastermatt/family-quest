@@ -12,6 +12,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { me, admin } = auth
   const { id } = await params
 
+  const { data: familyRules, error: rulesError } = await admin.from('family_control_settings').select('enabled,game_privilege_id').eq('family_id',me.family_id).eq('child_id',me.id).maybeSingle()
+  if (rulesError) return bad('Could not check game rules. Please retry.',503)
+  if (familyRules?.enabled && familyRules.game_privilege_id === id) return bad('Game time is earned automatically. Check your game-time card.',409)
+
   const { data: reward } = await admin
     .from('privileges')
     .select('id, gating_mode, required_template_ids, visible_to')
