@@ -13,7 +13,7 @@ export async function GET(req:NextRequest){
  const childId=req.nextUrl.searchParams.get('childId')??children?.[0]?.id
  if(!childId||!children?.some(c=>c.id===childId))return NextResponse.json({children:children??[],clients:[],apps:[],rules:[],settings:{gaming_minutes:null,paused:false,mode:'warn'}})
  const [clients,rules,settings,batches,browse]=await Promise.all([
-  admin.from('companion_clients').select('id,name,last_seen_at,version').eq('family_id',me.family_id).eq('child_id',childId).is('revoked_at',null),
+  admin.from('companion_clients').select('id,name,last_seen_at,version,last_startup_error,last_startup_error_at').eq('family_id',me.family_id).eq('child_id',childId).is('revoked_at',null),
   admin.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',me.family_id).eq('child_id',childId),
   admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin_hash,blocked_executables').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
   admin.from('companion_activity').select('apps,period_end').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).order('period_end',{ascending:false}).limit(1500),

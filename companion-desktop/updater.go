@@ -19,7 +19,7 @@ import (
 
 const updatePublicKey = "OhEnZ13gUc/92sAQ1BOLlb2z8OM2Lfj+MV6az7sMz8k="
 const releaseSequence = 6
-const bundledSequence = 19
+const bundledSequence = 20
 const maxUpdateSize = 32 << 20
 
 var errRemoteActivation = errors.New("verified update restart requested")
@@ -237,6 +237,7 @@ func supervise() error {
 	if e != nil {
 		return e
 	}
+	n.startupError = readStartupError()
 	cache, e := os.UserCacheDir()
 	if e != nil {
 		return e

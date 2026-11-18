@@ -18,12 +18,13 @@ import (
 )
 
 type Network struct {
-	bootstrap     Bootstrap
-	client        *http.Client
-	mu            sync.Mutex
-	hasRevision   bool
-	revision      int64
+	bootstrap    Bootstrap
+	client       *http.Client
+	mu           sync.Mutex
+	hasRevision  bool
+	revision     int64
 	revisionUntil time.Time
+	startupError string // last startup error; sent in every state request until cleared
 }
 
 func newNetwork(b Bootstrap) (*Network, error) {
@@ -63,7 +64,11 @@ func (n *Network) requestWithETag(path, token string, body, out any, tag *string
 	if n.hasRevision && time.Now().Before(n.revisionUntil) {
 		req.Header.Set("X-ChoreZap-Policy-Revision", strconv.FormatInt(n.revision, 10))
 	}
+	startupErr := n.startupError
 	n.mu.Unlock()
+	if path == "/api/companion/v2/state" {
+		req.Header.Set("X-ChoreZap-Startup-Error", startupErr)
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -248,6 +253,12 @@ func (e *Engine) refreshPolicy(n *Network, token string) (int, error) {
 	if wasUnlinked {
 		registerAutostart()
 	}
+	n.mu.Lock()
+	if n.startupError != "" {
+		n.startupError = ""
+		go clearStartupError()
+	}
+	n.mu.Unlock()
 	if policy.FamilyPolicy != nil {
 		if !policy.FamilyPolicy.Enabled {
 			// Acknowledge receipt of legacy limits as well. This deadline is

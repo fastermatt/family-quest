@@ -19,6 +19,7 @@ func main() {
 		if errors.Is(err, errRemoteActivation) {
 			os.Exit(42)
 		}
+		logStartupError(err)
 		showError(err.Error())
 		os.Exit(1)
 	}
@@ -88,6 +89,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		network.startupError = readStartupError()
 	}
 	e, err := newEngine(dir, a, *demo)
 	if err != nil {

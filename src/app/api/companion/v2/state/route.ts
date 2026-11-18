@@ -15,10 +15,15 @@ export async function GET(req:NextRequest){
   const snapshot=await desktopSnapshot(client)
   const version=req.headers.get('x-chorezap-version')??''
   const acknowledged=req.headers.get('x-chorezap-policy-revision')??''
+  const rawStartupErr=req.headers.get('x-chorezap-startup-error')
   if(/^\d+\.\d+\.\d+$/.test(version)){
    const revision=/^\d{1,9}$/.test(acknowledged)?Number(acknowledged):null
    const applied=revision!==null&&revision===snapshot.familyPolicy?.revision
-   const {error}=await adminClient().from('companion_clients').update({version,last_seen_at:new Date().toISOString(),...(applied?{applied_revision:revision,applied_at:new Date().toISOString()}:{})}).eq('id',client.id).eq('family_id',client.family_id).is('revoked_at',null)
+   const startupErrUpdate=rawStartupErr!==null?{
+    last_startup_error:rawStartupErr.trim().slice(0,200)||null,
+    last_startup_error_at:rawStartupErr.trim()?new Date().toISOString():null
+   }:{}
+   const {error}=await adminClient().from('companion_clients').update({version,last_seen_at:new Date().toISOString(),...(applied?{applied_revision:revision,applied_at:new Date().toISOString()}:{}),...startupErrUpdate}).eq('id',client.id).eq('family_id',client.family_id).is('revoked_at',null)
    if(error)return desktopError('Could not record PC status.',503)
   }
   return NextResponse.json(snapshot,{headers:{'Cache-Control':'no-store'}})
