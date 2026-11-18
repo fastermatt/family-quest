@@ -1,7 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
+import { getSessionProfile } from '@/lib/session'
 import { ParentNav } from '@/components/parent-nav'
 import { ReportProblem } from '@/components/report-problem'
 
@@ -10,36 +8,9 @@ export default async function ParentLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const cookieStore = await cookies()
-
-  // Same order as every API route (src/lib/session.ts): PIN cookie first,
-  // then an email login. Two different orders meant two different people.
-  let profile = null
-  const profileToken = cookieStore.get('profile_token')?.value
-  if (profileToken) {
-    const supabaseAdmin = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-    const { data } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('access_token', profileToken)
-      .single()
-    profile = data
-  }
-  if (!profile) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('auth_user_id', user.id)
-        .single()
-      profile = data
-    }
-  }
+  // Same order as every API route: PIN cookie first, then an email login.
+  // Shared, per-request lookup (src/lib/session.ts).
+  const profile = await getSessionProfile()
 
   // No profile yet — new user, send to setup
   if (!profile) {
