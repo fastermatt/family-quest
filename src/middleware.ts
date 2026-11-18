@@ -36,9 +36,12 @@ export async function middleware(request: NextRequest) {
   )
 
   try {
-    const result = await withTimeout(supabase.auth.getUser(), 6000)
+    // getClaims still refreshes an expired session (and sets the new cookies),
+    // but verifies the token locally with the project's signing keys instead
+    // of asking the Auth server on every page view and every API poll.
+    const result = await withTimeout(supabase.auth.getClaims(), 6000)
     if (result.error && (result.error.status === 504 || result.error.name === 'AuthRetryableFetchError')) throw result.error
-    if (!result.data.user) return denied(request)
+    if (!result.data?.claims?.sub) return denied(request)
     return supabaseResponse
   } catch {
     // Keep protected pages closed, preserve session cookies, and allow a retry.

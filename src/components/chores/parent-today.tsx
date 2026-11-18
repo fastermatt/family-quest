@@ -32,7 +32,7 @@ interface TrainingLog {
   win: string | null
 }
 
-interface Overview {
+export interface Overview {
   me: { name: string }
   family: { name: string }
   date: string
@@ -74,7 +74,7 @@ function timeAgo(iso: string | null) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' })
 }
 
-export function ParentToday() {
+export function ParentToday({ initialOverview }: { initialOverview?: Overview } = {}) {
   const qc = useQueryClient()
   const [sendingBack, setSendingBack] = useState<string | null>(null)
   const [note, setNote] = useState('')
@@ -89,6 +89,9 @@ export function ParentToday() {
       if (!res.ok) throw new Error(json.error || 'Could not load today.')
       return json as Overview
     },
+    // Rendered with the page on the server so the list shows on first paint.
+    initialData: initialOverview,
+    staleTime: 10_000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   })

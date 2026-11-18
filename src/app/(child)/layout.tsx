@@ -97,16 +97,18 @@ export default async function ChildLayout({
   }
 
   // 3. Normal Supabase auth path
-  const { data: { user } } = await supabase.auth.getUser()
+  // Verified locally with the project's signing keys (no Auth server trip).
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const userId = claimsData?.claims?.sub
 
-  if (!user) {
+  if (!userId) {
     redirect('/login')
   }
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
-    .eq('auth_user_id', user.id)
+    .eq('auth_user_id', userId)
     .single()
 
   if (!profile || profile.role !== 'child') {
