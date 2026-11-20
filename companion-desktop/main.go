@@ -28,12 +28,33 @@ func run() error {
 	demo := flag.Bool("demo", false, "sample data; no server connection")
 	worker := flag.Bool("worker", false, "internal updater worker")
 	uninstall := flag.Bool("uninstall", false, "remove ChoreZap from this Windows account")
+	installSvc := flag.Bool("install-service", false, "install ChoreZap Watchdog service (requires admin)")
+	removeSvc := flag.Bool("remove-service", false, "remove ChoreZap Watchdog service")
+	runSvc := flag.Bool("svc", false, "run as Windows service (called by SCM)")
 	configPath := flag.String("config", "", "bootstrap configuration path")
 	readyPath := flag.String("ready", "", "internal startup marker")
 	launcherPID := flag.Int("launcher-pid", 0, "internal launcher capability marker")
 	launcherVersion := flag.String("launcher-version", "", "internal launcher version")
 	flag.Parse()
 	if runtime.GOOS == "windows" && !*demo && !*worker {
+		if *installSvc {
+			exe, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			return installWatchdogService(exe)
+		}
+		if *removeSvc {
+			removeWatchdogService()
+			return nil
+		}
+		if *runSvc {
+			exe, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			return runAsService(exe)
+		}
 		if *uninstall {
 			return runUninstall()
 		}

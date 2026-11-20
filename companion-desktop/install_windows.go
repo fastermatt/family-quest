@@ -74,6 +74,10 @@ func maybeInstall(currentExe string) (bool, error) {
 
 	registerAutostartAt(target)
 	registerUninstaller(target)
+	// Attempt to install the SYSTEM watchdog service under UAC elevation.
+	// If the user declines or admin rights are unavailable Task Scheduler
+	// remains the autostart fallback and this silently does nothing.
+	tryElevatedServiceInstall(target)
 	release() // The new launcher must be able to acquire both mutexes.
 
 	// Relaunch from the installed path; this instance is done.
@@ -166,7 +170,8 @@ func runUninstall() error {
 	}
 	defer release()
 
-	// Remove scheduled task.
+	// Remove watchdog service and scheduled task.
+	removeWatchdogService()
 	exec.Command("schtasks", "/Delete", "/TN", "ChoreZap", "/F").Run() //nolint
 
 	// Remove registry Run key.
