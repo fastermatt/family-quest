@@ -116,6 +116,9 @@ func registerAutostartAt(exe string) {
 	safePath := strings.ReplaceAll(exe, `'`, `''`)
 	ps := `$a=New-ScheduledTaskAction -Execute '` + safePath + `';` +
 		`$t=New-ScheduledTaskTrigger -AtLogOn;` +
+		`$t.Repetition.Interval='PT5M';` +
+		`$t.Repetition.Duration='P10Y';` +
+		`$t.Repetition.StopAtDurationEnd=$false;` +
 		`$s=New-ScheduledTaskSettingsSet -RestartCount 10 ` +
 		`-RestartInterval (New-TimeSpan -Minutes 1) ` +
 		`-ExecutionTimeLimit 0 ` +
