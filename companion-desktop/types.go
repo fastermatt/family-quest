@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.4.0"
+const appVersion = "0.5.0"
 
 type Observation struct {
 	Executable     string
@@ -32,23 +32,38 @@ type Rule struct {
 	Category     string `json:"category"`
 	DailyMinutes *int   `json:"daily_minutes"`
 }
+type PauseWindow struct {
+	Start string   `json:"start"` // "08:00" Denver time
+	End   string   `json:"end"`   // "13:30" Denver time
+	Days  []string `json:"days"`  // ["Mon","Tue","Wed","Thu","Fri"]
+}
+
+type PiHoleConfig struct {
+	URL      string `json:"url"`
+	Password string `json:"password"`
+}
+
 type Settings struct {
-	GamingMinutes      *int     `json:"gaming_minutes"`
-	GamingSeconds      *float64 `json:"-"`
-	Paused             bool     `json:"paused"`
-	Mode               string   `json:"mode"`
-	StopPinRequired    bool     `json:"stop_pin_required"`
-	BlockedExecutables []string `json:"blocked_executables"`
+	GamingMinutes      *int          `json:"gaming_minutes"`
+	GamingSeconds      *float64      `json:"-"`
+	Paused             bool          `json:"paused"`
+	Mode               string        `json:"mode"`
+	StopPinRequired    bool          `json:"stop_pin_required"`
+	BlockedExecutables []string      `json:"blocked_executables"`
+	ScheduledPauses    []PauseWindow `json:"scheduled_pauses,omitempty"`
+	PiHole             *PiHoleConfig `json:"pihole,omitempty"`
 }
 
 func (s *Settings) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		GamingMinutes      *float64 `json:"gaming_minutes"`
-		Paused             bool     `json:"paused"`
-		Mode               string   `json:"mode"`
-		StopPinRequired    bool     `json:"stop_pin_required"`
-		LegacyStopPin      string   `json:"stop_pin"`
-		BlockedExecutables []string `json:"blocked_executables"`
+		GamingMinutes      *float64      `json:"gaming_minutes"`
+		Paused             bool          `json:"paused"`
+		Mode               string        `json:"mode"`
+		StopPinRequired    bool          `json:"stop_pin_required"`
+		LegacyStopPin      string        `json:"stop_pin"`
+		BlockedExecutables []string      `json:"blocked_executables"`
+		ScheduledPauses    []PauseWindow `json:"scheduled_pauses"`
+		PiHole             *PiHoleConfig `json:"pihole"`
 	}
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
@@ -56,6 +71,8 @@ func (s *Settings) UnmarshalJSON(data []byte) error {
 	s.Paused, s.Mode = wire.Paused, wire.Mode
 	s.StopPinRequired = wire.StopPinRequired || wire.LegacyStopPin != ""
 	s.BlockedExecutables = wire.BlockedExecutables
+	s.ScheduledPauses = wire.ScheduledPauses
+	s.PiHole = wire.PiHole
 	s.GamingMinutes, s.GamingSeconds = nil, nil
 	if wire.GamingMinutes != nil {
 		if *wire.GamingMinutes < 0 || *wire.GamingMinutes > 100000 || math.IsNaN(*wire.GamingMinutes) || math.IsInf(*wire.GamingMinutes, 0) {
@@ -73,12 +90,14 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 		minutes = *s.GamingSeconds / 60
 	}
 	return json.Marshal(struct {
-		GamingMinutes      any      `json:"gaming_minutes"`
-		Paused             bool     `json:"paused"`
-		Mode               string   `json:"mode"`
-		StopPinRequired    bool     `json:"stop_pin_required"`
-		BlockedExecutables []string `json:"blocked_executables,omitempty"`
-	}{minutes, s.Paused, s.Mode, s.StopPinRequired, s.BlockedExecutables})
+		GamingMinutes      any           `json:"gaming_minutes"`
+		Paused             bool          `json:"paused"`
+		Mode               string        `json:"mode"`
+		StopPinRequired    bool          `json:"stop_pin_required"`
+		BlockedExecutables []string      `json:"blocked_executables,omitempty"`
+		ScheduledPauses    []PauseWindow `json:"scheduled_pauses,omitempty"`
+		PiHole             *PiHoleConfig `json:"pihole,omitempty"`
+	}{minutes, s.Paused, s.Mode, s.StopPinRequired, s.BlockedExecutables, s.ScheduledPauses, s.PiHole})
 }
 
 type FamilyPolicy struct {

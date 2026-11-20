@@ -236,6 +236,7 @@ func run() error {
 				now := time.Now().UTC()
 				e.sample(now, o)
 				e.enforce(o, now)
+				e.checkSchedule(now)
 				if *readyPath != "" && time.Since(started) >= 20*time.Second {
 					if err = e.save(); err == nil {
 						_ = os.WriteFile(*readyPath, []byte(appVersion), 0600)

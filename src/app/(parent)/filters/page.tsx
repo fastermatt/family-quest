@@ -1,13 +1,15 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 
 type Kind = 'school' | 'allow' | 'deny'
 interface Rule { id: string; kind: Kind; domain: string; note: string }
 interface Category { id: string; label: string; description: string; group: string; enabled: boolean }
 interface Data { rules: Rule[]; categories: Category[]; alwaysAllowed: string[] }
+interface PauseWindow { start: string; end: string; days: string[] }
+interface CompanionData { childId: string; settings: { scheduled_pauses: PauseWindow[]; pihole_url: string | null } }
 interface Device {
   id: string
   name: string
@@ -30,12 +32,24 @@ async function send(url: string, method: string, body?: unknown) {
   return json
 }
 
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
 export default function FiltersPage() {
   const qc = useQueryClient()
   const [domain, setDomain] = useState('')
   const [kind, setKind] = useState<Kind>('deny')
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // School schedule state
+  const [schedStart, setSchedStart] = useState('08:00')
+  const [schedEnd, setSchedEnd] = useState('13:30')
+  const [schedDays, setSchedDays] = useState(['Mon','Tue','Wed','Thu','Fri'])
+  const [schedEnabled, setSchedEnabled] = useState(false)
+
+  // Pi-hole state
+  const [piholeUrl, setPiholeUrl] = useState('')
+  const [piholePass, setPiholePass] = useState('')
 
   const { data, isLoading, error: loadError } = useQuery<Data>({
     queryKey: ['filters'],
@@ -45,6 +59,50 @@ export default function FiltersPage() {
       return res.json()
     },
   })
+
+  const companion = useQuery<CompanionData>({
+    queryKey: ['companion-schedule'],
+    queryFn: async () => {
+      const res = await fetch('/api/parent/companion')
+      if (!res.ok) throw new Error('Could not load schedule.')
+      return res.json()
+    },
+  })
+
+  useEffect(() => {
+    if (!companion.data) return
+    const pauses = companion.data.settings.scheduled_pauses ?? []
+    const w = pauses[0]
+    if (w) {
+      setSchedStart(w.start)
+      setSchedEnd(w.end)
+      setSchedDays(w.days)
+      setSchedEnabled(true)
+    }
+    if (companion.data.settings.pihole_url) setPiholeUrl(companion.data.settings.pihole_url)
+  }, [companion.data])
+
+  const saveSchedule = useMutation({
+    mutationFn: (childId: string) => send('/api/parent/companion', 'POST', {
+      action: 'set-schedule',
+      childId,
+      pauses: schedEnabled ? [{ start: schedStart, end: schedEnd, days: schedDays }] : [],
+    }),
+    onSuccess: () => { setSaved('School schedule saved.'); qc.invalidateQueries({ queryKey: ['companion-schedule'] }) },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not save schedule.'),
+  })
+
+  const savePihole = useMutation({
+    mutationFn: (childId: string) => send('/api/parent/companion', 'POST', {
+      action: 'set-pihole',
+      childId,
+      piholeUrl: piholeUrl.trim() || null,
+      piholePassword: piholePass || null,
+    }),
+    onSuccess: () => { setSaved('Pi-hole config saved.'); qc.invalidateQueries({ queryKey: ['companion-schedule'] }) },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not save Pi-hole config.'),
+  })
+
   const refresh = () => {
     setSaved('Rules saved for later. No PC blocking is active yet.')
     void qc.invalidateQueries({ queryKey: ['usage'] })
@@ -181,6 +239,64 @@ export default function FiltersPage() {
           </button>
         </form>
         <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>A linked PC only reports what it is for now. It blocks nothing yet.</p>
+      </section>
+
+      <section className="panel space-y-4 p-4" aria-labelledby="sched-h">
+        <div className="flex items-center justify-between">
+          <h2 id="sched-h" className="text-[16px] font-semibold">School schedule</h2>
+          <label className="flex items-center gap-2 text-[14px]">
+            <input type="checkbox" className="h-5 w-5" checked={schedEnabled} onChange={(e) => setSchedEnabled(e.target.checked)} />
+            Enabled
+          </label>
+        </div>
+        <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Games pause automatically during these hours. Pi-hole switches Grey&apos;s PC to the school content filter at the same time.</p>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1" style={{ minWidth: 120 }}>
+            <label htmlFor="sched-start" className="mb-1 block text-[13px] font-semibold">Start</label>
+            <input id="sched-start" type="time" className="field" value={schedStart} onChange={(e) => setSchedStart(e.target.value)} disabled={!schedEnabled} />
+          </div>
+          <div className="flex-1" style={{ minWidth: 120 }}>
+            <label htmlFor="sched-end" className="mb-1 block text-[13px] font-semibold">End</label>
+            <input id="sched-end" type="time" className="field" value={schedEnd} onChange={(e) => setSchedEnd(e.target.value)} disabled={!schedEnabled} />
+          </div>
+        </div>
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold">Days</span>
+          <div className="flex flex-wrap gap-2">
+            {DAYS.map((d) => {
+              const on = schedDays.includes(d)
+              return (
+                <button key={d} type="button" disabled={!schedEnabled}
+                  className={on ? 'btn btn-primary px-3 py-1.5 text-[13px]' : 'btn btn-quiet px-3 py-1.5 text-[13px]'}
+                  onClick={() => setSchedDays(on ? schedDays.filter((x) => x !== d) : [...schedDays, d])}>
+                  {d}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <button type="button" className="btn btn-primary w-full" disabled={saveSchedule.isPending || !companion.data?.childId}
+          onClick={() => companion.data && saveSchedule.mutate(companion.data.childId)}>
+          {saveSchedule.isPending ? 'Saving…' : 'Save school schedule'}
+        </button>
+      </section>
+
+      <section className="panel space-y-4 p-4" aria-labelledby="pihole-h">
+        <h2 id="pihole-h" className="text-[16px] font-semibold">Pi-hole DNS filter</h2>
+        <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Optional. Enter your Pi-hole address and password to switch Grey&apos;s PC between standard and school-hours DNS filtering automatically at schedule boundaries.</p>
+        <div>
+          <label htmlFor="ph-url" className="mb-1 block text-[13px] font-semibold">Pi-hole URL</label>
+          <input id="ph-url" className="field" type="url" placeholder="http://192.168.1.x" value={piholeUrl} onChange={(e) => setPiholeUrl(e.target.value)} autoComplete="off" autoCapitalize="none" />
+        </div>
+        <div>
+          <label htmlFor="ph-pass" className="mb-1 block text-[13px] font-semibold">Password</label>
+          <input id="ph-pass" className="field" type="password" placeholder="Pi-hole web password" value={piholePass} onChange={(e) => setPiholePass(e.target.value)} autoComplete="new-password" />
+          <p className="mt-1 text-[12px]" style={{ color: 'var(--ink-3)' }}>Stored encrypted. Leave blank to keep the existing password.</p>
+        </div>
+        <button type="button" className="btn btn-primary w-full" disabled={savePihole.isPending || !companion.data?.childId}
+          onClick={() => companion.data && savePihole.mutate(companion.data.childId)}>
+          {savePihole.isPending ? 'Saving…' : 'Save Pi-hole config'}
+        </button>
       </section>
 
       <section className="panel space-y-3 p-4" aria-labelledby="add-h">

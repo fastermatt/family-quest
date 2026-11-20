@@ -15,7 +15,7 @@ export async function GET(req:NextRequest){
  const [clients,rules,settings,batches,browse]=await Promise.all([
   admin.from('companion_clients').select('id,name,last_seen_at,version,last_startup_error,last_startup_error_at').eq('family_id',me.family_id).eq('child_id',childId).is('revoked_at',null),
   admin.from('companion_app_rules').select('executable,label,category,daily_minutes').eq('family_id',me.family_id).eq('child_id',childId),
-  admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin_hash,blocked_executables').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
+  admin.from('companion_limits').select('gaming_minutes,paused,mode,stop_pin_hash,blocked_executables,scheduled_pauses,pihole_url').eq('family_id',me.family_id).eq('child_id',childId).maybeSingle(),
   admin.from('companion_activity').select('apps,period_end').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).order('period_end',{ascending:false}).limit(1500),
   admin.from('companion_browse_history').select('entries,coverage').eq('family_id',me.family_id).eq('child_id',childId).eq('day',denverDay()).maybeSingle(),
  ])
@@ -25,7 +25,7 @@ export async function GET(req:NextRequest){
  const apps=aggregateApps(batches.data??[])
  const effective=effectiveGameRules(apps,rules.data??[])
  const rawSettings=settings.data
- const baseSettings={gaming_minutes:rawSettings?.gaming_minutes??null,paused:rawSettings?.paused??false,mode:rawSettings?.mode??'warn',blocked_executables:rawSettings?.blocked_executables??[],stop_pin_required:!!rawSettings?.stop_pin_hash}
+ const baseSettings={gaming_minutes:rawSettings?.gaming_minutes??null,paused:rawSettings?.paused??false,mode:rawSettings?.mode??'warn',blocked_executables:rawSettings?.blocked_executables??[],stop_pin_required:!!rawSettings?.stop_pin_hash,scheduled_pauses:rawSettings?.scheduled_pauses??[],pihole_url:rawSettings?.pihole_url??null}
  const displayApps=apps.map(app=>({...app,category:effective.find(rule=>rule.executable===app.executable)?.category??'other'}))
  return NextResponse.json({suggestions:gameSuggestions(apps,effective),childId,children,clients:clients.data,rules:effective,familyRulesEnabled:family.settings.enabled,familyReason:family.game.reason,legacyGamingMinutes:baseSettings.gaming_minutes,settings:{...baseSettings,gaming_minutes:family.game.budgetSeconds==null?null:family.game.budgetSeconds/60,paused:family.game.paused,mode:family.game.mode??'warn'},apps:displayApps,lastUpload:batches.data?.[0]?.period_end??null,day:denverDay(),browse:browse.error?{entries:[],coverage:{status:'unavailable',browsers:[]}}:{entries:browse.data?.entries??[],coverage:browse.data?.coverage??null}},{headers:{'Cache-Control':'no-store'}})
 }
@@ -85,6 +85,24 @@ export async function POST(req:NextRequest){
    if(b.executables.length>50)throw new Error('Maximum 50 blocked apps.')
    const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,blocked_executables:b.executables},{onConflict:'family_id,child_id'})
    if(error)return desktopError('Could not save blocked apps.',503)
+  }else if(b.action==='set-schedule'){
+   const pauses=b.pauses
+   if(!Array.isArray(pauses)||pauses.length>10)throw new Error('Invalid schedule.')
+   for(const p of pauses as unknown[]){
+    if(typeof p!=='object'||p===null)throw new Error('Invalid pause window.')
+    const w=p as Record<string,unknown>
+    if(typeof w.start!=='string'||!/^\d{2}:\d{2}$/.test(w.start))throw new Error('start must be HH:MM.')
+    if(typeof w.end!=='string'||!/^\d{2}:\d{2}$/.test(w.end))throw new Error('end must be HH:MM.')
+    if(!Array.isArray(w.days)||w.days.some((d:unknown)=>!['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].includes(String(d))))throw new Error('days must be short day names.')
+   }
+   const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,scheduled_pauses:pauses},{onConflict:'family_id,child_id'})
+   if(error)return desktopError('Could not save schedule.',503)
+  }else if(b.action==='set-pihole'){
+   const url=b.piholeUrl===null||b.piholeUrl===''?null:String(b.piholeUrl)
+   const password=b.piholePassword===null||b.piholePassword===''?null:String(b.piholePassword)
+   if(url!==null&&!/^https?:\/\/.+/.test(url))throw new Error('Enter a valid http:// or https:// URL.')
+   const {error}=await admin.from('companion_limits').upsert({family_id:me.family_id,child_id:b.childId,pihole_url:url,pihole_password:password},{onConflict:'family_id,child_id'})
+   if(error)return desktopError('Could not save Pi-hole config.',503)
   }else if(b.action==='revoke'){
    if(!UUID.test(String(b.clientId)))throw new Error('Invalid PC.')
    const {error}=await admin.from('companion_clients').update({revoked_at:new Date().toISOString()}).eq('id',b.clientId).eq('family_id',me.family_id).eq('child_id',b.childId)

@@ -67,6 +67,10 @@ type Engine struct {
 	Action              string
 	deadlines           map[string]time.Time
 	demo                bool
+	// Schedule enforcement
+	scheduledPaused bool
+	piholeURL       string
+	pihole          *piholeClient
 }
 
 func newEngine(dir string, account Account, demo bool) (*Engine, error) {
@@ -301,6 +305,9 @@ func (e *Engine) remainingAt(name string, now time.Time) (float64, bool) {
 	if e.Ledger.Policy.Settings.Paused {
 		return 0, true
 	}
+	if e.scheduledPaused {
+		return 0, true
+	}
 	totals := e.totals()
 	remaining := float64(0)
 	limited := false
@@ -418,6 +425,45 @@ func (e *Engine) enforce(o Observation, now time.Time) {
 		e.Action = "Game process closed after its time limit."
 	}
 	e.deadlines[o.Executable] = now.Add(30 * time.Second)
+}
+
+// checkSchedule evaluates scheduled pause windows and fires Pi-hole group
+// switches when the active/inactive state changes. Safe to call every tick.
+func (e *Engine) checkSchedule(now time.Time) {
+	e.mu.Lock()
+	windows := e.Ledger.Policy.Settings.ScheduledPauses
+	phCfg := e.Ledger.Policy.Settings.PiHole
+	newActive := inScheduledPause(windows, now)
+	changed := newActive != e.scheduledPaused
+	if changed {
+		e.scheduledPaused = newActive
+	}
+	// Lazily create or refresh the Pi-hole client when the URL changes.
+	if phCfg != nil && (e.pihole == nil || e.piholeURL != phCfg.URL) {
+		e.pihole = newPiholeClient(*phCfg)
+		e.piholeURL = phCfg.URL
+	}
+	pc := e.pihole
+	e.mu.Unlock()
+
+	if changed && pc != nil && phCfg != nil {
+		ip := localIPForTarget(phCfg.URL)
+		active := newActive
+		go func() {
+			if ip == "" {
+				return
+			}
+			groupName := "default"
+			if active {
+				groupName = piholeSchoolGroup
+			}
+			if err := pc.SetClientGroup(ip, groupName); err != nil {
+				e.mu.Lock()
+				e.SyncError = "Pi-hole: " + err.Error()
+				e.mu.Unlock()
+			}
+		}()
+	}
 }
 
 // Caller holds e.mu. One saved warning belongs to the whole family game
