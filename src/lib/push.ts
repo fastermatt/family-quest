@@ -41,7 +41,7 @@ export async function sendToProfiles(admin: Admin, profileIds: string[], payload
     const results = await Promise.all(
       (subs ?? []).map(async (s) => {
         try {
-          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, { TTL: 3600 })
+          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, { TTL: 3600, timeout: 5000 })
           return 'ok'
         } catch (e) {
           const code = (e as { statusCode?: number }).statusCode

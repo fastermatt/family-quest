@@ -10,9 +10,12 @@ function denied(request: NextRequest) {
 }
 
 export async function middleware(request: NextRequest) {
+  // Device-token routes perform their own authentication.
+  if (request.nextUrl.pathname.startsWith('/api/companion/')) return NextResponse.next({ request })
   const access = middlewareAccess(request.nextUrl.pathname, request.cookies.getAll())
   if (access === 'pass') return NextResponse.next({ request })
   if (access === 'deny') return denied(request)
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(

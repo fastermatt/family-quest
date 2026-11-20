@@ -10,6 +10,8 @@ test('public login, root and cron routes do not authenticate even with stale aut
  assert.equal(middlewareAccess('/home',[{name:'profile_token',value:'token'}]),'pass')
  assert.equal(middlewareAccess('/home',[{name:'profile_token',value:''}]),'deny')
  assert.equal(middlewareAccess('/login-malicious',[]),'deny')
+ assert.equal(middlewareAccess('/downloads/ChoreZap-Windows-x64.zip',[]),'pass')
+ assert.equal(middlewareAccess('/downloads/private.zip',[]),'deny')
 })
 test('a hung upstream is bounded and its network signal is cancelled',async()=>{
  let signal: AbortSignal | undefined

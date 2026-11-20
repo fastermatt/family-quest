@@ -51,7 +51,10 @@ export async function GET() {
       String(a.task_template?.cutoff_time ?? '99').localeCompare(String(b.task_template?.cutoff_time ?? '99'))
   )
 
-  const mine = (rewards ?? []).filter((r) => !r.visible_to?.length || r.visible_to.includes(me.id))
+  const { data: familyRules, error: rulesError } = await admin.from('family_control_settings').select('enabled,game_privilege_id').eq('family_id',me.family_id).eq('child_id',me.id).maybeSingle()
+  if (rulesError) return NextResponse.json({error:'Could not load game rules. Please retry.'},{status:503})
+  const mine = (rewards ?? []).filter((r) => (!r.visible_to?.length || r.visible_to.includes(me.id)) && !(familyRules?.enabled && r.id === familyRules.game_privilege_id))
+
 
   return NextResponse.json({
     me: {
